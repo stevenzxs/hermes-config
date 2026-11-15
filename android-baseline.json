@@ -1,0 +1,18 @@
+{
+  "upstream": "https://github.com/rusty4444/ares.git",
+  "release": "v4.0.0",
+  "release_target_commit": "6a880cdb5531255501c6c237eb6909c5bc13c57c",
+  "published_at": "2026-11-15T06:39:46Z",
+  "release_url": "https://github.com/rusty4444/ares/releases/tag/v4.0.0",
+  "source_directory": "../ares-android",
+  "hermes_release": "v0.23.1",
+  "compatibility_status": "documented_transport_and_route_match_only_not_end_to_end_verified",
+  "connection": "Classic Gateway API / port 8642 / API_SERVER_KEY",
+  "notes": [
+    "No exact v4.0.0 to Hermes v0.23.1 certification found in tagged README or release notes.",
+    "Tagged README lists /api/sessions, /api/sessions/{id}/messages and /v1/chat/completions; Hermes v0.23.1 contains these routes.",
+    "Dashboard features require separately configured dashboard authentication and connectivity.",
+    "Experimental turn_recovery v2 is not assumed available on stock Hermes.",
+    "Build, login, session creation, streaming, cancellation, model selection and file delivery still require verification."
+  ]
+}

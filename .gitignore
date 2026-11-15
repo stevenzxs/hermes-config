@@ -1,0 +1,23 @@
+# Private runtime state and local overrides never belong in this repository.
+.env
+.env.*
+!.env.example
+*.local.yaml
+*.local.yml
+home/
+tools/
+cache/
+temp/
+workspace/
+app/
+node_modules/
+release/
+dist/
+*.log
+*.db
+*.db-*
+*.sqlite*
+*.pem
+*.key
+*.pfx
+*.p12

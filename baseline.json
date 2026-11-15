@@ -1,0 +1,8 @@
+{
+  "upstream": "https://github.com/NousResearch/hermes-agent.git",
+  "release": "v0.23.1",
+  "commit": "3b421578588243f920886e6fe79a6faa87ea026e",
+  "published_at": "2026-11-10T01:42:15Z",
+  "release_url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.1",
+  "runtime_root": "D:\\hermesagent"
+}
