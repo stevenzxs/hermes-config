@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
           repository: stevenzxs/hermes-android
-          ref: 573d6113e438c15ae17b8d28f4909a832072062a
+          ref: 187fc049225434642b85b93445a60e4ae2679e42
           path: source
           persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
