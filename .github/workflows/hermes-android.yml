@@ -1,0 +1,75 @@
+name: Hermes Android Signed Release APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hermes-android-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          path: config
+          persist-credentials: false
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: stevenzxs/hermes-android
+          ref: 6a880cdb5531255501c6c237eb6909c5bc13c57c
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Test configuration and admit signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          python3 -B -m unittest discover -s config/android -p 'test_*.py'
+          python3 config/android/prepare_signing.py source "$RUNNER_TEMP"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+      - name: Verify baseline and build with native Flutter entry
+        working-directory: source
+        env:
+          PUB_CACHE: ${{ github.workspace }}/pub-cache
+        run: |
+          test "$(git rev-parse HEAD)" = "$(python3 -c "import json; print(json.load(open('../config/android-baseline.json'))['release_target_commit'])")"
+          flutter pub get --enforce-lockfile
+          python3 -m unittest scripts.test_verify_release_apks scripts.test_licence_evidence
+          flutter analyze --no-pub --fatal-infos
+          flutter test --no-pub
+          flutter build apk --release --no-pub --split-per-abi --split-debug-info=symbols
+          python3 scripts/verify_release_apks.py --target "$(git rev-parse HEAD)" --assets-dir build/app/outputs/flutter-apk
+      - name: Record and stage verified APKs
+        run: |
+          mkdir delivery
+          cp source/build/app/outputs/flutter-apk/app-*-release.apk delivery/
+          cp config/android-baseline.json delivery/
+          cd delivery
+          sha256sum *.apk > SHA256SUMS
+          python3 - <<'PY'
+          import json, os, pathlib
+          baseline = json.loads(pathlib.Path('android-baseline.json').read_text())
+          record = dict(sourceCommit=baseline['release_target_commit'], configCommit=os.environ['GITHUB_SHA'], version='4.0.0+3048', signing='production certificate verified by native verifier', runUrl=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
+          pathlib.Path('build-record.json').write_text(json.dumps(record, indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hermes-android-release-${{ github.run_id }}
+          path: delivery/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove ephemeral signing files
+        if: always()
+        run: |
+          rm -f -- "$RUNNER_TEMP/hermes-android-release.keystore" "$GITHUB_WORKSPACE/source/key.properties"
