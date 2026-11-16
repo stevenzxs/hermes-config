@@ -1,0 +1,11 @@
+services:
+  gateway:
+    networks:
+      default: {}
+      caddy:
+        aliases:
+          - hermes-agent
+networks:
+  caddy:
+    external: true
+    name: caddy-net
