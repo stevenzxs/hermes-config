@@ -14,6 +14,12 @@ free_kb=$(df -Pk /mnt/d | awk 'NR==2 {print $4}')
 test "$free_kb" -gt 41943040 || { echo 'At least 40 GiB D: free required before build'; exit 1; }
 mkdir -p "$delivery/context"
 git -C "$source_repo" archive "$source_sha" | tar -x -C "$delivery/context"
+test "$(git -C "$source_repo" rev-parse 'v0.23.1^{commit}')" = "$source_sha"
+python3 "$delivery/context/scripts/write_install_stamp.py" \
+  --output "$delivery/context/install-stamp.json" --commit "$source_sha" \
+  --base-version 0.23.1 --display-version 0.23.1 --distance 0 \
+  --commit-date "$(git -C "$source_repo" show -s --format=%ct "$source_sha")" \
+  --distribution docker --update-mechanism external --source local
 printf '%s\n' "$image" > "$delivery/image.txt"
 printf '{"sourceCommit":"%s","configCommit":"%s","image":"%s","platform":"linux/amd64"}\n' "$source_sha" "$config_sha" "$image" > "$delivery/build-record.json"
 docker build --platform linux/amd64 --progress plain \
@@ -22,5 +28,8 @@ docker build --platform linux/amd64 --progress plain \
   --label "io.stevenzxs.hermes.config-revision=$config_sha" \
   -t "$image" "$delivery/context" 2>&1 | tee "$delivery/build.log"
 docker image inspect "$image" > "$delivery/image-inspect.json"
+docker run --rm --network none --entrypoint /opt/hermes/.venv/bin/python "$image" -c \
+  'import json,sys; s=json.load(open("/opt/hermes/install-stamp.json")); p=json.load(open("/etc/hermes/image-provenance.json")); assert s["commit"] == sys.argv[1] == p["revision"]; assert s["baseVersion"] == "0.23.1"; assert s["distribution"] == "docker"; assert s["updateMechanism"] == "external"; print("Internal source identity verified")' \
+  "$source_sha" | tee "$delivery/identity-check.log"
 docker run --rm --network none "$image" --version 2>&1 | tee "$delivery/version-check.log"
 echo 'BUILD AND VERSION CHECK COMPLETE; publish requires verified result'
