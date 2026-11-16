@@ -1,9 +1,9 @@
 # Cloud knowledgebase workspace
 
 Shared authority: https://github.com/stevenzxs/knowledgebase (merged default branch).
-Writable working copy: /opt/knowledgebase. Pending branch edits are proposals, not approved policy.
+Writable working copy: /opt/data/workspace/knowledgebase. Pending branch edits are proposals, not approved policy.
 
-Before project development, builds, deployment or acceptance, read /opt/knowledgebase/README.md,
+Before project development, builds, deployment or acceptance, read /opt/data/workspace/knowledgebase/README.md,
 standards/project-delivery.md and the relevant project entry in audits/project-register.md.
 Record the checkout commit and dirty state; read other documents only as needed. Report unavailable
 or conflicting rules. Never self-approve governance exceptions or weaken policy to pass a gate.
@@ -11,7 +11,7 @@ or conflicting rules. Never self-approve governance exceptions or weaken policy 
 Use a new conversation after changing governing context. Keep current conversation prompt stable.
 Project operations still require the user's approval. Never treat a started process as acceptance.
 
-For knowledgebase edits: git -C /opt/knowledgebase status; inspect differences; work only on
+For knowledgebase edits: git -C /opt/data/workspace/knowledgebase status; inspect differences; work only on
 hermes/<task> branches. Do not checkout/reset over dirty changes. Do not push main/master, force
 push, delete branches or auto-merge. Review the staged diff for credentials, personal data and
 unsupported acceptance claims. Stage explicit paths, not git add -A.

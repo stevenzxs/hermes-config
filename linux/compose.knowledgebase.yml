@@ -1,6 +1,6 @@
 services:
   gateway:
     volumes:
-      - /opt/stevenzxs-knowledgebase:/opt/knowledgebase
+      - /opt/stevenzxs-knowledgebase:/opt/data/workspace/knowledgebase
       - /opt/stevenzxs-hermes/knowledgebase-tools:/opt/knowledgebase-tools:ro
       - /opt/stevenzxs-hermes/knowledgebase-auth:/run/knowledgebase-auth:ro

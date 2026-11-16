@@ -6,7 +6,7 @@ Windows checkouts are working copies; uncommitted/unmerged changes are not appro
 
 Run all five Compose files (compose.yml, compose.offline.yml, compose.caddy.yml,
 compose.kimi.yml, compose.knowledgebase.yml). Dedicated host checkout /opt/stevenzxs-knowledgebase
-mounts rw at /opt/knowledgebase. Tools/auth directories mount ro separately. terminal.cwd is
+mounts rw at /opt/data/workspace/knowledgebase (inside the native file-tool sandbox). Tools/auth directories mount ro separately. terminal.cwd is
 /opt/data/workspace, containing the reviewed KNOWLEDGEBASE-AGENTS.md fragment as AGENTS.md;
 preserve pre-existing instructions. Verify native prompt loader AND a new actual Hermes request.
 

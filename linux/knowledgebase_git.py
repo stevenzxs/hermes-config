@@ -8,7 +8,7 @@ import sys
 import urllib.request
 
 REPO = 'stevenzxs/knowledgebase'
-ROOT = Path('/opt/knowledgebase')
+ROOT = Path('/opt/data/workspace/knowledgebase')
 AUTH = Path('/run/knowledgebase-auth')
 
 
