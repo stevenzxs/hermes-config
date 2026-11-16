@@ -21,3 +21,4 @@ dist/
 *.key
 *.pfx
 *.p12
+__pycache__/
