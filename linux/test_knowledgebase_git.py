@@ -28,6 +28,18 @@ class KnowledgebaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 kb.token()
 
+    def test_submit_keeps_default_branch_blocked(self):
+        with patch.object(kb, 'check_origin'), patch.object(kb, 'git', return_value='main'), patch.object(kb, 'api') as api:
+            with self.assertRaises(ValueError):
+                kb.submit('test')
+            api.assert_not_called()
+
+    def test_submit_without_branch_rule_attestation(self):
+        with patch.object(kb, 'check_origin'), patch.object(kb, 'git', side_effect=['hermes/test', '']), patch.object(kb, 'token', return_value='test'), patch.object(kb, 'api', side_effect=[{'default_branch': 'main'}, [{'html_url': 'https://github.com/stevenzxs/knowledgebase/pull/1'}]]) as api, patch.object(kb.subprocess, 'run') as run:
+            kb.submit('test')
+            self.assertEqual(api.call_count, 2)
+            self.assertIn('HEAD:refs/heads/hermes/test', run.call_args.args[0])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -19,13 +19,12 @@ general GitHub account token or CloudMeet credentials. Install its value out of 
 /opt/stevenzxs-hermes/knowledgebase-auth/token (UID1000, mode600, parent700). Do not pass via
 command arguments, Git URLs, env or logs. Revoke/rotate in GitHub, replace atomically and recheck.
 
-Before enabling submit, configure a GitHub rule for the default branch requiring PR review,
-blocking force-push/deletion and preventing the automation identity from bypassing it. Verify
-the actual rule and credential repository scope out of band; record evidence, verifier and time
-in knowledgebase-auth/protection-verified.json with {"repository":"stevenzxs/knowledgebase",
-"verified":true,"evidence":"...","verifiedAt":"..."}. The client gate is NOT server-side protection
-and cannot establish it. Do not create that attestation without real verification. No token or
-no attestation means no submission. Tools read secrets but never output their value.
+Owner decision, 2026-11-16: GitHub branch rules are not required for this integration.
+No protection attestation is required or fabricated. Keep hermes/* branch-only submission,
+PR review and no auto-merge as client policy. This is NOT server-enforced protection: a token
+with Contents write can potentially write the default branch through other tools. Repository
+scope must be configured by the owner; an API success cannot prove absence of broader access.
+Missing token still blocks submission. Tools read secrets but never output their value.
 
 Git uses the supplied credential helper only for this checkout; credentials go over HTTPS solely
 to github.com/stevenzxs/knowledgebase. PR REST calls solely to api.github.com for that repository.

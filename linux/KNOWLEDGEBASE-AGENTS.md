@@ -20,7 +20,8 @@ The scoped publishing tool is /opt/knowledgebase-tools/knowledgebase_git.py:
   python3 /opt/knowledgebase-tools/knowledgebase_git.py status
   python3 /opt/knowledgebase-tools/knowledgebase_git.py submit "PR title"
 Commit reviewed changes before submit. It pushes the current branch and creates/reuses a PR,
-never merges. A missing token or unverified server-side protection blocks submission. Do not
+never merges. A missing token blocks submission. The owner declined GitHub branch rules on
+2026-11-16: branch/PR restrictions are client policy, NOT server-enforced protection. Do not
 read/display credential files or seek credentials belonging to another repository/account.
 
 Store runtime evidence outside the repository until reviewed. Do not claim the unique audit

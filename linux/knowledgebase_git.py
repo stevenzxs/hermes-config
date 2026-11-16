@@ -62,10 +62,8 @@ def submit(title):
         raise ValueError('Only hermes/<task> branches may be submitted')
     if git('status', '--porcelain'):
         raise ValueError('Commit reviewed changes first; working tree must be clean')
-    proof = json.loads((AUTH / 'protection-verified.json').read_text())
-    if (proof.get('repository') != REPO or proof.get('verified') is not True
-            or not proof.get('evidence') or not proof.get('verifiedAt')):
-        raise ValueError('Server-side branch protection/scope verification required')
+    # Owner explicitly declined server-side branch rules on 2026-11-16.
+    # Keep branch/PR restrictions here; do not fabricate a protection attestation.
     key = token()
     metadata = api('', key)
     base = metadata['default_branch']
@@ -91,7 +89,7 @@ def main():
         print(json.dumps({'repository': REPO, 'branch': git('branch', '--show-current'),
                           'commit': git('rev-parse', 'HEAD'), 'dirty': bool(git('status', '--porcelain')),
                           'token_provisioned': (AUTH / 'token').is_file(),
-                          'protection_attestation_present': (AUTH / 'protection-verified.json').is_file()}))
+                          'branch_protection': 'not required by owner; client restrictions only'}))
     elif len(sys.argv) == 3 and sys.argv[1] == 'submit':
         submit(sys.argv[2])
     else:
