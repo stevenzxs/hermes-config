@@ -1,0 +1,5 @@
+# Optional Kimi Code OpenAI-compatible endpoint override. Secrets stay in runtime.env.
+services:
+  gateway:
+    environment:
+      KIMI_BASE_URL: "https://api.kimi.com/coding/v1"
