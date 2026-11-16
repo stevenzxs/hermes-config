@@ -51,6 +51,17 @@ def output(*args):
     return subprocess.check_output(args, text=True).strip()
 
 
+def archive_image_id(path):
+    with tarfile.open(path, 'r:gz') as tar:
+        manifest = json.load(tar.extractfile('manifest.json'))
+        if len(manifest) != 1: raise ValueError('Expected one exported image')
+        name = manifest[0]['Config']
+        data = tar.extractfile(name).read()
+        sha = hashlib.sha256(data).hexdigest()
+        if sha not in name: raise ValueError('Exported config digest mismatch')
+        return 'sha256:' + sha
+
+
 def pack(delivery, root):
     if root.exists() or Path(str(root) + '.tar').exists(): raise ValueError('Output exists')
     repo = Path(__file__).resolve().parent.parent
@@ -88,7 +99,8 @@ def pack(delivery, root):
         shutil.copyfile(repo / 'linux' / src, root / name)
     m = dict(sourceCommit=SOURCE, buildConfigCommit=record['configCommit'],
              packagingConfigCommit=output('git', '-C', str(repo), 'rev-parse', 'HEAD'),
-             registryImage=registry, imageId=inspect['Id'], platform='linux/amd64', localTag=tag)
+             registryImage=registry, imageId=archive_image_id(root / 'image.tar.gz'),
+             platform='linux/amd64', localTag=tag)
     (root / 'manifest.json').write_text(json.dumps(m, indent=2) + '\n')
     write_checksums(root); verify(root)
     archive = Path(str(root) + '.tar')

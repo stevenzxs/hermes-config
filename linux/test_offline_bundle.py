@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import io
+import tarfile
 
 spec = importlib.util.spec_from_file_location('offline_bundle', Path(__file__).with_name('offline_bundle.py'))
 bundle = importlib.util.module_from_spec(spec)
@@ -11,6 +13,18 @@ spec.loader.exec_module(bundle)
 
 
 class VerificationTests(unittest.TestCase):
+    def test_exported_config_is_image_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'image.tar.gz'
+            data = b'{"architecture":"amd64","os":"linux"}'
+            sha = hashlib.sha256(data).hexdigest()
+            with tarfile.open(p, 'w:gz') as tar:
+                for name, payload in [(sha + '.json', data),
+                                      ('manifest.json', json.dumps([{'Config': sha + '.json'}]).encode())]:
+                    info = tarfile.TarInfo(name); info.size = len(payload)
+                    tar.addfile(info, io.BytesIO(payload))
+            self.assertEqual(bundle.archive_image_id(p), 'sha256:' + sha)
+
     def fixture(self, root):
         for name in bundle.PAYLOAD:
             (root / name).write_text('fixture')
