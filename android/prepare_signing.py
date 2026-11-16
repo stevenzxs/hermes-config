@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-EXPECTED_CERT = '475baf431b16d050c8f658ac838783b273f7c10bba06ed1d16bb0a4239f592fb'
+EXPECTED_CERT = 'ccc22121cccab1671afaaa432df4a600c8d2c60dd02dc1f0ce3e812200f14d13'
 REQUIRED = ('KEYSTORE_BASE64', 'STORE_PASSWORD', 'KEY_PASSWORD', 'KEY_ALIAS')
 
 

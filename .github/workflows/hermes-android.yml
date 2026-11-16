@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
           repository: stevenzxs/hermes-android
-          ref: 6a880cdb5531255501c6c237eb6909c5bc13c57c
+          ref: 573d6113e438c15ae17b8d28f4909a832072062a
           path: source
           persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
@@ -43,9 +43,9 @@ jobs:
         env:
           PUB_CACHE: ${{ github.workspace }}/pub-cache
         run: |
-          test "$(git rev-parse HEAD)" = "$(python3 -c "import json; print(json.load(open('../config/android-baseline.json'))['release_target_commit'])")"
+          test "$(git rev-parse HEAD)" = "$(python3 -c "import json; print(json.load(open('../config/android-baseline.json'))['source_commit'])")"
           flutter pub get --enforce-lockfile
-          python3 -m unittest scripts.test_verify_release_apks scripts.test_licence_evidence
+          python3 -m unittest scripts.test_verify_release_apks scripts.test_licence_evidence scripts.test_independent_identity
           flutter analyze --no-pub --fatal-infos
           flutter test --no-pub
           flutter build apk --release --no-pub --split-per-abi --split-debug-info=symbols
@@ -60,7 +60,7 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib
           baseline = json.loads(pathlib.Path('android-baseline.json').read_text())
-          record = dict(sourceCommit=baseline['release_target_commit'], configCommit=os.environ['GITHUB_SHA'], version='4.0.0+3048', signing='production certificate verified by native verifier', runUrl=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
+          record = dict(sourceCommit=baseline['source_commit'], configCommit=os.environ['GITHUB_SHA'], version='4.0.0+3048', packageName=baseline['package_name'], certificateSha256=baseline['certificate_sha256'], signing='independent release certificate verified by native verifier', runUrl=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
           pathlib.Path('build-record.json').write_text(json.dumps(record, indent=2))
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

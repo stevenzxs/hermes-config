@@ -35,11 +35,11 @@ Windows：`.github/workflows/hermes-windows.yml`，Run 43792138239 已成功并�
 
 Android：`.github/workflows/hermes-android.yml`，手动触发，固定 `android-baseline.json` 对应源码 v4.0.0 / 6a880cdb5531255501c6c237eb6909c5bc13c57c，Flutter 3.44.0、Java 17。调用原生 Flutter 构建和 `scripts/verify_release_apks.py`，产出三个 ABI 的正式签名 APK、SHA256SUMS 和源码/配置 SHA 记录，不自动发布 GitHub Release / Play，也不自动部署手机。
 
-### Android 正式签名前置条件（当前阻塞）
+### Android 独立签名（已配置，待云端验收）
 
-在配置库 GitHub Actions Secrets 中由密钥持有人安全配置 `KEYSTORE_BASE64`、`STORE_PASSWORD`、`KEY_PASSWORD`、`KEY_ALIAS`。不得在聊天、仓库文件或日志中提交值。当前核验配置库和 Android 仓库均无仓库级 Secrets、无 Environment。
+用户已批准独立包名和新建长期密钥。四项签名 Secrets 已安全配置在配置库，源码库不接收。详见 [签名身份与备份说明](android/SIGNING.md)。不得在聊天、仓库文件或日志中提交值。
 
-入口必须验证证书 SHA256 为源码正式身份 `475baf431b16d050c8f658ac838783b273f7c10bba06ed1d16bb0a4239f592fb`；缺少密钥或身份不符直接失败，不回退 Debug、不生成新密钥替代。该摘要不代表已拥有上游私钥的使用授权。若需要自有签名身份，必须单独批准应用升级/包名及原生验签策略变更，本入口不会绕过。
+入口必须验证证书 SHA256 为自有身份 `ccc22121cccab1671afaaa432df4a600c8d2c60dd02dc1f0ce3e812200f14d13`；包名为 `com.stevenzxs.hermes_android`。缺少密钥或身份不符直接失败，不回退 Debug、不生成新密钥替代。源码固定提交取自 android-baseline.json 的 source_commit，保留上游 release_target_commit 用于溯源。
 
 Windows 与 Android 是独立手动工作流；没有自动联动或 `all` 总编排。配置包工作流、部署 Skill 和项目族聚合门禁尚未实现，不把单项成功称为项目族完成。
 
@@ -51,4 +51,4 @@ Windows 与 Android 是独立手动工作流；没有自动联动或 `all` 总�
 - 运行 `windows/test-build-preflight.ps1` 验证构建目录不能落在 C 盘、正式安装目录或备份目录。
 - 构建脚本成功不代表安装或健康检查成功；构建失败时不得改用旧二进制冒充新产物。
 - 旧安装已由用户迁移到 `D:\hermesagent-old`，后续保留该备份，新安装目标为 `D:\hermesagent`。上文“不移动”描述的是初始化阶段，不再表示当前安装状态。
-- 源码远端 main/tag 已核验；Windows 云端构建与最小安装验收已完成。Android 正式签名云端构建待授权凭据，尚无成功 Run / APK 证据。
+- 源码远端 main/tag 已核验；Windows 云端构建与最小安装验收已完成。Android 自有签名已配置，尚无成功 Run / APK 证据。
