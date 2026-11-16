@@ -2,7 +2,7 @@
 # Run on the approved Ubuntu server from a reviewed configuration checkout/package.
 set -euo pipefail
 image=${1:?verified immutable image reference}
-[[ "$image" =~ ^ghcr.io/stevenzxs/hermes-agent@sha256:[0-9a-f]{64}$ ]]
+[[ "$image" =~ ^(ghcr.io|ghcr.nju.edu.cn)/stevenzxs/hermes-agent@sha256:[0-9a-f]{64}$ ]]
 target=/opt/stevenzxs-hermes
 test ! -e "$target" || { echo 'Deployment already exists; first-install refuses overwrite'; exit 1; }
 test -z "$(ss -H -ltn 'sport = :8642')" || { echo 'Port 8642 occupied'; exit 1; }

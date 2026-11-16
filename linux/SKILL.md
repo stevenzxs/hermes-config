@@ -13,6 +13,8 @@ Read the knowledgebase delivery standard and ledger. Check stevenzxs Packages in
 
 Pull only the verified ghcr.io/stevenzxs/hermes-agent@sha256 digest. Public package needs no credential. Private package requires separately approved read-only access, never the local write token. Compare remote RepoDigests, architecture, OCI source/config labels and internal install-stamp. Do not trust latest.
 
+Approved transport alternative: ghcr.nju.edu.cn/stevenzxs/hermes-agent with the exact same verified digest. Validate the proxy manifest digest against GHCR before pulling. This changes only the project's image reference; do not change global Docker registry configuration or restart Docker. Cancel any old pull/waiting installer before switching to prevent concurrent installs.
+
 ## First install
 
 Review compose.yml and install-first.sh. Transfer the reviewed files to a new private staging directory on the approved host, then run sudo -n bash install-first.sh IMAGE. It refuses an existing target and occupied port. Data belongs to UID/GID 1000; runtime.env is root-only and receives a new random API key without printing it. Do not copy local user secrets or model configuration. No Docker socket or host networking. No changes to Caddy, firewall or unrelated containers.
