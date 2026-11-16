@@ -1,0 +1,87 @@
+name: Hermes Windows Desktop and CLI
+run-name: Hermes Windows v0.23.1 baseline / config ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-windows
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout configuration
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
+        with:
+          path: config
+          persist-credentials: false
+      - name: Checkout admitted product source
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
+        with:
+          repository: stevenzxs/hermes-agent
+          ref: 3b421578588243f920886e6fe79a6faa87ea026e
+          fetch-depth: 0
+          path: source
+          persist-credentials: false
+      - name: Python bootstrap
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.8'
+      - name: Configuration tests
+        run: |
+          python -B -m unittest discover -s config/windows -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Configuration tests failed' }
+          & ./config/windows/test-build-preflight.ps1 -Source "$env:GITHUB_WORKSPACE/source"
+      - name: Build using product native driver
+        run: |
+          & ./config/windows/build-hermes.ps1 -Source "$env:GITHUB_WORKSPACE/source" -Python (Get-Command python).Source -BuildRoot 'D:\hermes-build'
+      - name: Package and record provenance
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path delivery | Out-Null
+          $commit = (Get-Content config/baseline.json -Raw | ConvertFrom-Json).commit
+          $output = "$env:GITHUB_WORKSPACE/source/apps/desktop/release/win-unpacked"
+          $identity = python -B config/windows/artifact.py $output $commit
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact validation failed' }
+          tar -czf delivery/hermes-windows-x64.tar.gz -C $output .
+          if ($LASTEXITCODE -ne 0) { throw 'Archive failed' }
+          $hash = (Get-FileHash delivery/hermes-windows-x64.tar.gz -Algorithm SHA256).Hash.ToLower()
+          "$hash  hermes-windows-x64.tar.gz" | Set-Content delivery/SHA256SUMS -Encoding utf8
+          @{
+            sourceCommit = $commit
+            configCommit = $env:GITHUB_SHA
+            baselineRelease = 'v0.23.1'
+            artifactIdentity = ($identity | ConvertFrom-Json)
+            signing = 'unsigned; no release or updater publication'
+            runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            sha256 = $hash
+          } | ConvertTo-Json -Depth 8 | Set-Content delivery/build-record.json -Encoding utf8
+          "Source: $commit`nConfig: $env:GITHUB_SHA`nSHA256: $hash`nUnsigned commit build; displayVersion may be 0.0.0." | Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Upload downloadable bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hermes-windows-x64-${{ github.run_id }}
+          path: delivery/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hermes-build-logs-${{ github.run_id }}
+          path: D:/hermes-build/logs/*
+          if-no-files-found: ignore
+          retention-days: 7
