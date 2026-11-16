@@ -1,12 +1,7 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\hermes-env.ps1"
 Set-Location 'D:\hermesagent\workspace'
-$desktopExe = 'D:\hermesagent\app\apps\desktop\release\win-unpacked\Hermes.exe'
-if ($args.Count -eq 0 -and (Test-Path -LiteralPath $desktopExe)) {
-    $env:HERMES_DESKTOP_HERMES_ROOT = 'D:\hermesagent\app'
-    $env:HERMES_DESKTOP_CWD = 'D:\hermesagent\workspace'
-    Start-Process -FilePath $desktopExe -WorkingDirectory $env:HERMES_DESKTOP_CWD | Out-Null
-    exit 0
-}
-& 'D:\hermesagent\home\bin\hermes.exe' desktop --cwd 'D:\hermesagent\workspace' @args
-exit $LASTEXITCODE
+$desktopExe = @(Get-ChildItem -LiteralPath 'D:\hermesagent\app' -Filter '*.exe' -File)
+if ($desktopExe.Count -ne 1) { throw 'Expected exactly one bundled Desktop executable.' }
+$env:HERMES_DESKTOP_CWD = 'D:\hermesagent\workspace'
+Start-Process -FilePath $desktopExe[0].FullName -WorkingDirectory $env:HERMES_DESKTOP_CWD -ArgumentList (@($args) + '--enable-logging=file') | Out-Null

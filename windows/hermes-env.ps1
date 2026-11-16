@@ -1,7 +1,7 @@
 $root = 'D:\hermesagent'
 $paths = @{
     HERMES_HOME = "$root\home"
-    HERMES_RUNTIME_DIR = "$root\tools"
+    HERMES_RUNTIME_DIR = "$root\app\resources\agent-payload\tools"
     HERMES_DESKTOP_USER_DATA_DIR = "$root\home\desktop"
     ELECTRON_CACHE = "$root\cache\electron"
     ELECTRON_BUILDER_CACHE = "$root\cache\electron-builder"
@@ -13,6 +13,10 @@ $paths = @{
     PLAYWRIGHT_BROWSERS_PATH = "$root\cache\playwright"
     TEMP = "$root\temp"
     TMP = "$root\temp"
+    HOME = "$root\home"
+    XDG_CACHE_HOME = "$root\cache"
+    XDG_CONFIG_HOME = "$root\home\.config"
+    XDG_DATA_HOME = "$root\home\.local\share"
 }
 foreach ($entry in $paths.GetEnumerator()) {
     New-Item -ItemType Directory -Force -Path $entry.Value | Out-Null
