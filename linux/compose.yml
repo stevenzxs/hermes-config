@@ -1,0 +1,25 @@
+name: stevenzxs-hermes
+services:
+  gateway:
+    image: ${HERMES_IMAGE:?set a verified image digest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8642:8642"
+    volumes:
+      - ./data:/opt/data
+    env_file:
+      - ./runtime.env
+    environment:
+      HERMES_UID: "1000"
+      HERMES_GID: "1000"
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: "0.0.0.0"
+    command: ["gateway", "run"]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
