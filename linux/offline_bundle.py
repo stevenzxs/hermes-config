@@ -63,7 +63,10 @@ def pack(delivery, root):
     if 'Internal source identity verified' not in (delivery / 'identity-check.log').read_text():
         raise ValueError('Missing identity acceptance')
     registry = (delivery / 'published-image.txt').read_text().strip()
-    inspect = json.loads(output('docker', 'image', 'inspect', record['image']))[0]
+    if not re.fullmatch(re.escape(REGISTRY) + '@sha256:[0-9a-f]{64}', registry):
+        raise ValueError('Invalid published registry identity')
+    subprocess.run(['docker', 'pull', '--platform', 'linux/amd64', registry], check=True)
+    inspect = json.loads(output('docker', 'image', 'inspect', registry))[0]
     if registry not in inspect['RepoDigests']: raise ValueError('Published digest not in local image')
     labels = inspect['Config']['Labels']
     if labels['org.opencontainers.image.revision'] != SOURCE: raise ValueError('Wrong source label')

@@ -6,7 +6,7 @@ On the packaging host, from a clean committed configuration checkout:
 
     python linux/offline_bundle.py pack VERIFIED_DELIVERY NEW_OUTPUT_DIRECTORY
 
-This exports the already verified local image, not a new build. Outputs DIRECTORY.tar and DIRECTORY.tar.sha256 plus an unpacked directory. No credentials or runtime data are copied. The manifest distinguishes source/build-config/packaging-config commits, original published digest and image ID. Transfer the TAR and its checksum over authenticated SSH; compare the receiver SHA256 with the trusted sender value (a checksum alone is not a signature).
+This first pulls the published fixed digest from GHCR to the local Linux Docker engine, verifies its identity against the delivery evidence, then exports it; it does not depend on the old local build tag and does not rebuild. Docker Desktop Linux engine (or another local Linux Docker engine) must be running even for pulling. Outputs DIRECTORY.tar and DIRECTORY.tar.sha256 plus an unpacked directory. No credentials or runtime data are copied. The manifest distinguishes source/build-config/packaging-config commits, original published digest and image ID. Transfer the TAR and its checksum over authenticated SSH; compare the receiver SHA256 with the trusted sender value (a checksum alone is not a signature).
 
 On the explicitly approved host, extract into a NEW restricted staging directory after checking the outer checksum. The generated archive contains only fixed filenames. Then run:
 
