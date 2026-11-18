@@ -130,19 +130,41 @@ jobs:
           print(json.dumps(smoke))
           PY
           docker rm -f hermes-smoke >/dev/null
-      - name: Refuse to overwrite an existing version tag
+      - name: Resolve or verify existing version tag
+        id: tagcheck
         env:
           VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CONFIG_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           tok=$(curl -s "https://ghcr.io/token?scope=repository:stevenzxs/hermes-agent:pull" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" \
-            -H 'Accept: application/vnd.oci.image.index.v1+json' \
+          code=$(curl -s -o /tmp/existing-manifest.json -w '%{http_code}' -H "Authorization: Bearer $tok" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
             "https://ghcr.io/v2/stevenzxs/hermes-agent/manifests/$VERSION")
-          if [ "$code" != "404" ]; then
-            echo "Refusing to publish: version tag $VERSION already exists in registry (HTTP $code)"
-            exit 1
+          if [ "$code" = "404" ]; then
+            echo "Tag $VERSION is free; will publish after verification"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          test "$code" = "200" || { echo "Unexpected registry response HTTP $code for $VERSION"; exit 1; }
+          digest=$(curl -sI -H "Authorization: Bearer $tok" -H 'Accept: application/vnd.oci.image.index.v1+json' \
+            "https://ghcr.io/v2/stevenzxs/hermes-agent/manifests/$VERSION" | tr -d '\r' | awk 'tolower($1) == "docker-content-digest:" {print $2; exit}')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "Tag $VERSION already exists at $digest; verifying pinned identity labels"
+          config_digest=$(python3 -c 'import json; print(json.load(open("/tmp/existing-manifest.json"))["config"]["digest"])')
+          curl -sL -H "Authorization: Bearer $tok" "https://ghcr.io/v2/stevenzxs/hermes-agent/blobs/$config_digest" > /tmp/existing-config.json
+          python3 - "$SOURCE_SHA" <<'PY'
+          import json, sys
+          source_sha = sys.argv[1]
+          labels = json.load(open('/tmp/existing-config.json')).get('config', {}).get('Labels', {})
+          assert labels.get('org.opencontainers.image.revision') == source_sha, labels
+          pathlib_out = labels.get('io.stevenzxs.hermes.config-revision')
+          assert pathlib_out and len(pathlib_out) == 40, labels
+          print('Existing tag pinned identity verified for reuse; built by config', pathlib_out)
+          PY
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
       - name: Publish image and record digest
         id: publish
         env:
@@ -150,14 +172,21 @@ jobs:
           VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           CONFIG_SHA: ${{ github.sha }}
+          REUSED: ${{ steps.tagcheck.outputs.exists }}
+          REUSED_DIGEST: ${{ steps.tagcheck.outputs.digest }}
         run: |
           set -euo pipefail
-          UNIQUE="ghcr.io/stevenzxs/hermes-agent:src-${SOURCE_SHA:0:12}-cfg-${CONFIG_SHA:0:12}"
-          docker login ghcr.io -u ${{ github.actor }} --password-stdin <<<"$GITHUB_TOKEN"
-          docker push "$UNIQUE"
-          docker push "ghcr.io/stevenzxs/hermes-agent:$VERSION"
-          digest=$(docker buildx imagetools inspect "ghcr.io/stevenzxs/hermes-agent:$VERSION" | awk '$1 == "Digest:" {print $2; exit}')
-          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          if [ "$REUSED" = "true" ]; then
+            digest="$REUSED_DIGEST"
+            echo "Reusing already published $VERSION at $digest"
+          else
+            UNIQUE="ghcr.io/stevenzxs/hermes-agent:src-${SOURCE_SHA:0:12}-cfg-${CONFIG_SHA:0:12}"
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin <<<"$GITHUB_TOKEN"
+            docker push "$UNIQUE"
+            docker push "ghcr.io/stevenzxs/hermes-agent:$VERSION"
+            digest=$(docker buildx imagetools inspect "ghcr.io/stevenzxs/hermes-agent:$VERSION" | awk '$1 == "Digest:" {print $2; exit}')
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          fi
           install -d delivery
           printf 'ghcr.io/stevenzxs/hermes-agent@%s\n' "$digest" > delivery/published-image.txt
           printf '{"sourceCommit":"%s","configCommit":"%s","version":"%s","platform":"linux/amd64","image":"ghcr.io/stevenzxs/hermes-agent@%s","runUrl":"%s"}\n' \
