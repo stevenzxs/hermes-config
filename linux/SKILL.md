@@ -21,7 +21,7 @@ Review compose.yml and install-first.sh. Transfer the reviewed files to a new pr
 
 ## Acceptance
 
-Wait for /health HTTP 200. Check /v1/models without auth and with wrong token returns 401, valid key returns 200; load key into process memory, never command-line args or logs. Confirm 127.0.0.1:8642 binding, 768MiB/1CPU/256 PID limits, no OOM/restart loops and healthy existing containers. Restart this project's service and repeat checks; verify the API key and a non-secret data marker persist. Record image digest, source/build/deployment config SHA, evidence and untested model calls. pnpm synchronization warnings require recording and follow-up, not silent suppression.
+Wait for /health HTTP 200. Check /v1/models without auth and with wrong token returns 401, valid key returns 200; load key into process memory, never command-line args or logs. Confirm 127.0.0.1:8642 binding, 1GiB memory / 1536MiB combined memory-and-swap / 1CPU / 256 PID limits, no OOM/restart loops and healthy existing containers. Host swap capacity is managed separately: the 150.158.83.70 instance has approximately 4GiB swap, which does not increase container limits automatically. Restart this project's service and repeat checks; verify the API key and a non-secret data marker persist. Record image digest, source/build/deployment config SHA, evidence and untested model calls. pnpm synchronization warnings require recording and follow-up, not silent suppression.
 
 ## Upgrade, failure and rollback
 
