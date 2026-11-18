@@ -5,7 +5,7 @@
   "published_at": "2026-11-15T06:39:46Z",
   "release_url": "https://github.com/rusty4444/ares/releases/tag/v4.0.0",
   "source_directory": "../ares-android",
-  "source_commit": "1f3d9508be54bc7e6a5be9d0a4ee4f7036292be5",
+  "source_commit": "83be01999c14c3e92a1ec6c56b045b6a16eb8a11",
   "development_branch": "stevenzxs/independent-release",
   "package_name": "com.stevenzxs.hermes_android",
   "certificate_sha256": "ccc22121cccab1671afaaa432df4a600c8d2c60dd02dc1f0ce3e812200f14d13",
