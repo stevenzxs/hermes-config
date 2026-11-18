@@ -101,9 +101,11 @@ jobs:
           docker run --rm --network none "$unique" --version
       - name: Gateway smoke test on loopback
         env:
-          UNIQUE: ghcr.io/stevenzxs/hermes-agent:src-${{ inputs.source_sha:0:12 }}-cfg-${{ github.sha:0:12 }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CONFIG_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          UNIQUE="ghcr.io/stevenzxs/hermes-agent:src-${SOURCE_SHA:0:12}-cfg-${CONFIG_SHA:0:12}"
           key=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
           docker run -d --name hermes-smoke -p 127.0.0.1:18642:8642 \
             -e API_SERVER_KEY="$key" -e API_SERVER_ENABLED=true -e API_SERVER_HOST=0.0.0.0 \
@@ -143,12 +145,12 @@ jobs:
       - name: Publish image and record digest
         id: publish
         env:
-          UNIQUE: ghcr.io/stevenzxs/hermes-agent:src-${{ inputs.source_sha:0:12 }}-cfg-${{ github.sha:0:12 }}
           VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           CONFIG_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          UNIQUE="ghcr.io/stevenzxs/hermes-agent:src-${SOURCE_SHA:0:12}-cfg-${CONFIG_SHA:0:12}"
           docker login ghcr.io -u ${{ github.actor }} --password-stdin <<<"$GITHUB_TOKEN"
           docker push "$UNIQUE"
           docker push "ghcr.io/stevenzxs/hermes-agent:$VERSION"
