@@ -1,0 +1,69 @@
+name: Hermes Joint Delivery Preflight (no publication)
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full reviewed Hermes server commit
+        required: true
+      android_sha:
+        description: Full reviewed independent Android release commit
+        required: true
+      version:
+        description: Committed unified versionName
+        required: true
+      android_code:
+        description: Committed Android versionCode
+        required: true
+      previous_android_code:
+        description: Verified highest previously published versionCode
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: hermes-delivery-preflight
+  cancel-in-progress: false
+jobs:
+  admit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          path: config
+          persist-credentials: false
+      - name: Validate input types before checkout
+        env:
+          INPUTS: ${{ toJSON(inputs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, pathlib
+          i = json.loads(os.environ['INPUTS'])
+          for name in ['source_sha', 'android_sha']:
+              assert re.fullmatch('[0-9a-f]{40}', i[name]), 'Full commit SHA required'
+          r = dict(source_sha=i['source_sha'], android_sha=i['android_sha'],
+                   config_sha=os.environ['GITHUB_SHA'], version=i['version'],
+                   android_code=int(i['android_code']))
+          pathlib.Path('request.json').write_text(json.dumps(r))
+          assert 0 < int(i['previous_android_code']) < r['android_code']
+          PY
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: stevenzxs/hermes-agent
+          ref: ${{ inputs.source_sha }}
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: stevenzxs/hermes-android
+          ref: ${{ inputs.android_sha }}
+          path: android
+          persist-credentials: false
+      - name: Test configuration and committed version contract
+        env:
+          PREVIOUS_CODE: ${{ inputs.previous_android_code }}
+        run: |
+          python3 -B -m unittest discover -s config/linux -p 'test_*.py'
+          python3 config/linux/release_contract.py request.json android --previous-android-code "$PREVIOUS_CODE"
+          test "$(git -C source rev-parse HEAD)" = "$(python3 -c "import json; print(json.load(open('request.json'))['source_sha'])")"
+          test "$(git -C android rev-parse HEAD)" = "$(python3 -c "import json; print(json.load(open('request.json'))['android_sha'])")"
+          echo 'Preflight only: no image/APK build, signing, release, or deployment.' >> "$GITHUB_STEP_SUMMARY"
