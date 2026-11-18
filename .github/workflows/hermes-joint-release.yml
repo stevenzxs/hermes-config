@@ -43,6 +43,7 @@ jobs:
           repository: stevenzxs/hermes-android
           ref: ${{ inputs.android_sha }}
           path: android
+          fetch-depth: 0
           persist-credentials: false
       - name: Validate fixed inputs and committed version contract
         env:
