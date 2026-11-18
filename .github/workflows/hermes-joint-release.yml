@@ -146,6 +146,7 @@ jobs:
       - name: Publish image and record digest
         id: publish
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           CONFIG_SHA: ${{ github.sha }}
