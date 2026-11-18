@@ -1,0 +1,226 @@
+name: Hermes Joint Release Build and Publish
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full reviewed Hermes server commit
+        required: true
+      android_sha:
+        description: Full reviewed independent Android release commit
+        required: true
+      version:
+        description: Committed unified versionName
+        required: true
+      android_code:
+        description: Committed Android versionCode
+        required: true
+      previous_android_code:
+        description: Verified highest previously published versionCode
+        required: true
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: hermes-joint-release
+  cancel-in-progress: false
+jobs:
+  admit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: stevenzxs/hermes-agent
+          ref: ${{ inputs.source_sha }}
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: stevenzxs/hermes-android
+          ref: ${{ inputs.android_sha }}
+          path: android
+          persist-credentials: false
+      - name: Validate fixed inputs and committed version contract
+        env:
+          INPUTS: ${{ toJSON(inputs) }}
+          CONFIG_SHA: ${{ github.sha }}
+          PREVIOUS_CODE: ${{ inputs.previous_android_code }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          i = json.loads(os.environ['INPUTS'])
+          r = dict(source_sha=i['source_sha'], android_sha=i['android_sha'],
+                   config_sha=os.environ['CONFIG_SHA'], version=i['version'],
+                   android_code=int(i['android_code']))
+          pathlib.Path('request.json').write_text(json.dumps(r))
+          PY
+          python3 -B -m unittest discover -s linux -p 'test_*.py'
+          python3 linux/release_contract.py request.json android --previous-android-code "$PREVIOUS_CODE"
+          test "$(git -C source rev-parse HEAD)" = "${{ inputs.source_sha }}"
+          test "$(git -C android rev-parse HEAD)" = "${{ inputs.android_sha }}"
+          git -C android merge-base --is-ancestor 6a880cdb5531255501c6c237eb6909c5bc13c57c HEAD
+  image:
+    needs: admit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: stevenzxs/hermes-agent
+          ref: ${{ inputs.source_sha }}
+          path: source
+          persist-credentials: false
+      - name: Write install stamp and build image
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CONFIG_SHA: ${{ github.sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          commit_date=$(git -C source show -s --format=%ct "$SOURCE_SHA")
+          python3 source/scripts/write_install_stamp.py \
+            --output source/install-stamp.json --commit "$SOURCE_SHA" \
+            --base-version 0.23.1 --display-version 0.23.1 --distance 0 \
+            --commit-date "$commit_date" \
+            --distribution docker --update-mechanism external --source ci
+          unique="ghcr.io/stevenzxs/hermes-agent:src-${SOURCE_SHA:0:12}-cfg-${CONFIG_SHA:0:12}"
+          docker build --platform linux/amd64 --progress plain \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label 'org.opencontainers.image.source=https://github.com/stevenzxs/hermes-agent' \
+            --label "io.stevenzxs.hermes.config-revision=$CONFIG_SHA" \
+            -t "$unique" -t "ghcr.io/stevenzxs/hermes-agent:$VERSION" source/
+          docker run --rm --network none --entrypoint /opt/hermes/.venv/bin/python "$unique" -c \
+            'import json,sys; s=json.load(open("/opt/hermes/install-stamp.json")); p=json.load(open("/etc/hermes/image-provenance.json")); assert s["commit"] == sys.argv[1] == p["revision"]; assert s["baseVersion"] == "0.23.1"; assert s["distribution"] == "docker"; assert s["updateMechanism"] == "external"; print("Internal source identity verified")' \
+            "$SOURCE_SHA"
+          docker run --rm --network none "$unique" --version
+      - name: Gateway smoke test on loopback
+        env:
+          UNIQUE: ghcr.io/stevenzxs/hermes-agent:src-${{ inputs.source_sha:0:12 }}-cfg-${{ github.sha:0:12 }}
+        run: |
+          set -euo pipefail
+          key=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+          docker run -d --name hermes-smoke -p 127.0.0.1:18642:8642 \
+            -e API_SERVER_KEY="$key" -e API_SERVER_ENABLED=true -e API_SERVER_HOST=0.0.0.0 \
+            "$UNIQUE" gateway run
+          ok=""
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 2 http://127.0.0.1:18642/health || true)
+            [ "$code" = "200" ] && { ok=1; break; }
+            sleep 2
+          done
+          [ -n "$ok" ] || { docker logs hermes-smoke; exit 1; }
+          health=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18642/health)
+          noauth=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18642/v1/models)
+          wrong=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer wrong-token" http://127.0.0.1:18642/v1/models)
+          good=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $key" http://127.0.0.1:18642/v1/models)
+          python3 - "$health" "$noauth" "$wrong" "$good" <<'PY'
+          import json, sys
+          smoke = dict(health=int(sys.argv[1]), unauthenticated=int(sys.argv[2]),
+                       wrong_token=int(sys.argv[3]), authenticated=int(sys.argv[4]))
+          assert smoke == dict(health=200, unauthenticated=401, wrong_token=401, authenticated=200), smoke
+          print(json.dumps(smoke))
+          PY
+          docker rm -f hermes-smoke >/dev/null
+      - name: Refuse to overwrite an existing version tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          tok=$(curl -s "https://ghcr.io/token?scope=repository:stevenzxs/hermes-agent:pull" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json' \
+            "https://ghcr.io/v2/stevenzxs/hermes-agent/manifests/$VERSION")
+          if [ "$code" != "404" ]; then
+            echo "Refusing to publish: version tag $VERSION already exists in registry (HTTP $code)"
+            exit 1
+          fi
+      - name: Publish image and record digest
+        id: publish
+        env:
+          UNIQUE: ghcr.io/stevenzxs/hermes-agent:src-${{ inputs.source_sha:0:12 }}-cfg-${{ github.sha:0:12 }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CONFIG_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker login ghcr.io -u ${{ github.actor }} --password-stdin <<<"$GITHUB_TOKEN"
+          docker push "$UNIQUE"
+          docker push "ghcr.io/stevenzxs/hermes-agent:$VERSION"
+          digest=$(docker buildx imagetools inspect "ghcr.io/stevenzxs/hermes-agent:$VERSION" | awk '$1 == "Digest:" {print $2; exit}')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          install -d delivery
+          printf 'ghcr.io/stevenzxs/hermes-agent@%s\n' "$digest" > delivery/published-image.txt
+          printf '{"sourceCommit":"%s","configCommit":"%s","version":"%s","platform":"linux/amd64","image":"ghcr.io/stevenzxs/hermes-agent@%s","runUrl":"%s"}\n' \
+            "$SOURCE_SHA" "$CONFIG_SHA" "$VERSION" "$digest" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > delivery/build-record.json
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hermes-joint-image-${{ github.run_id }}
+          path: delivery/*
+          if-no-files-found: error
+          retention-days: 30
+  android:
+    needs: admit
+    uses: ./.github/workflows/hermes-android.yml
+    with:
+      android_sha: ${{ inputs.android_sha }}
+      version: ${{ inputs.version }}
+      android_code: ${{ inputs.android_code }}
+    secrets: inherit
+  package:
+    needs: [image, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005ee3728367048c0
+        with:
+          pattern: hermes-*
+          path: bundle
+          merge-multiple: true
+      - name: Assemble joint release manifest
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CONFIG_SHA: ${{ github.sha }}
+          ANDROID_SHA: ${{ inputs.android_sha }}
+          VERSION: ${{ inputs.version }}
+          ANDROID_CODE: ${{ inputs.android_code }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          install -d delivery
+          cp bundle/*.apk delivery/
+          cp android-baseline.json delivery/
+          cd delivery
+          sha256sum *.apk > SHA256SUMS
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          d = pathlib.Path('.')
+          apks = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in sorted(d.glob('*.apk'))}
+          assert apks, 'no APK artifacts downloaded'
+          manifest = dict(
+              version=os.environ['VERSION'], androidCode=int(os.environ['ANDROID_CODE']),
+              sourceCommit=os.environ['SOURCE_SHA'], configCommit=os.environ['CONFIG_SHA'],
+              androidCommit=os.environ['ANDROID_SHA'],
+              image=os.environ['DIGEST'], apks=apks,
+              packageName=json.loads(pathlib.Path('android-baseline.json').read_text())['package_name'],
+              certificateSha256=json.loads(pathlib.Path('android-baseline.json').read_text())['certificate_sha256'],
+              runUrl=f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
+          pathlib.Path('release-manifest.json').write_text(json.dumps(manifest, indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hermes-joint-release-${{ github.run_id }}
+          path: delivery/*
+          if-no-files-found: error
+          retention-days: 30

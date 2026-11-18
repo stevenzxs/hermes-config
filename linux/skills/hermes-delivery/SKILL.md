@@ -7,10 +7,21 @@ description: Android对话请求修改Hermes服务端、推送main、联合构�
 
 ## Current readiness gate
 
-Bootstrap only. Joint release workflow and online deploy executor are NOT yet
-implemented. Do not invoke upstream workflows or local builds as a substitute.
-Explain this blocker if asked to release now. This Skill is not evidence that
-the complete flow works or that it has been installed/loaded in the controller.
+Joint release workflow (`.github/workflows/hermes-joint-release.yml`) and the
+150 orchestrator (`linux/joint_release.py`) are implemented and unit-tested,
+but NO real joint release Run has been dispatched or verified yet. The 115
+deploy executor step is still preparation-only: no verified digest from a
+joint Run exists. Do not invoke upstream workflows or local builds as a
+substitute. Explain this blocker if asked to release now. A written procedure
+is not evidence of a completed release.
+
+Usage after explicit owner confirmation of fixed version/SHAs/targets:
+`python3 linux/joint_release.py prepare --task-id <id> --config-sha <main-sha>
+--source-sha <sha> --android-sha <sha> --version <v> --android-code <n>
+--previous-android-code <n>`, then `dispatch --task-id <id>`, poll
+`status --task-id <id>`, and only after artifact/digest verification record
+`verify`. Reusing a task ID with the same request returns the record; never
+dispatch twice for an uncertain outcome.
 
 ## Approved architecture
 

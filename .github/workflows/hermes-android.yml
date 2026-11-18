@@ -1,6 +1,30 @@
 name: Hermes Android Signed Release APK
 on:
   workflow_dispatch:
+    inputs:
+      android_sha:
+        description: Full reviewed independent Android release commit
+        required: true
+        default: '187fc049225434642b85b93445a60e4ae2679e42'
+      version:
+        description: Unified versionName committed in pubspec
+        required: true
+        default: '4.0.0'
+      android_code:
+        description: Committed Android versionCode
+        required: true
+        default: '3048'
+  workflow_call:
+    inputs:
+      android_sha:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      android_code:
+        type: string
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -18,7 +42,7 @@ jobs:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
           repository: stevenzxs/hermes-android
-          ref: 187fc049225434642b85b93445a60e4ae2679e42
+          ref: ${{ inputs.android_sha }}
           path: source
           persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
@@ -42,8 +66,10 @@ jobs:
         working-directory: source
         env:
           PUB_CACHE: ${{ github.workspace }}/pub-cache
+          EXPECTED_VERSION: ${{ inputs.version }}+${{ inputs.android_code }}
         run: |
           test "$(git rev-parse HEAD)" = "$(python3 -c "import json; print(json.load(open('../config/android-baseline.json'))['source_commit'])")"
+          test "$(sed -n 's/^version:[ \t]*\([^ \t]*\)[ \t]*$/\1/p' pubspec.yaml | head -1)" = "$EXPECTED_VERSION"
           flutter pub get --enforce-lockfile
           python3 -m unittest scripts.test_verify_release_apks scripts.test_licence_evidence scripts.test_independent_identity
           flutter analyze --no-pub --fatal-infos
@@ -51,6 +77,8 @@ jobs:
           flutter build apk --release --no-pub --split-per-abi --split-debug-info=symbols
           python3 scripts/verify_release_apks.py --target "$(git rev-parse HEAD)" --assets-dir build/app/outputs/flutter-apk
       - name: Record and stage verified APKs
+        env:
+          RECORD_VERSION: ${{ inputs.version }}+${{ inputs.android_code }}
         run: |
           mkdir delivery
           cp source/build/app/outputs/flutter-apk/app-*-release.apk delivery/
@@ -60,7 +88,7 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib
           baseline = json.loads(pathlib.Path('android-baseline.json').read_text())
-          record = dict(sourceCommit=baseline['source_commit'], configCommit=os.environ['GITHUB_SHA'], version='4.0.0+3048', packageName=baseline['package_name'], certificateSha256=baseline['certificate_sha256'], signing='independent release certificate verified by native verifier', runUrl=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
+          record = dict(sourceCommit=baseline['source_commit'], configCommit=os.environ['GITHUB_SHA'], version=os.environ['RECORD_VERSION'], packageName=baseline['package_name'], certificateSha256=baseline['certificate_sha256'], signing='independent release certificate verified by native verifier', runUrl=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
           pathlib.Path('build-record.json').write_text(json.dumps(record, indent=2))
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
