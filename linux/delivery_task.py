@@ -1,4 +1,4 @@
-"""Persistent delivery checkpoints, not an automatic deployment executor."""
+"""Persistent delivery checkpoints with explicit deployment selection gate."""
 import argparse
 from contextlib import contextmanager
 import json
@@ -12,6 +12,8 @@ NEXT = {'prepared': {'building', 'failed'},
         'building': {'published', 'failed'},
         'published': {'deploying', 'failed'},
         'deploying': {'verified', 'failed'}, 'verified': set(), 'failed': set()}
+TARGET_PATTERN = re.compile(r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)')
+DEPLOYMENT_MODES = {'first-install', 'upgrade'}
 
 
 def task_path(root, task_id):
@@ -45,16 +47,34 @@ def save(path, record):
 
 
 def create_task(root, task_id, request):
-    if request.get('target') != '115.190.243.21':
-        raise ValueError('Only the explicitly approved 115 target is supported')
+    """Build-only request; deployment target/mode is explicitly recorded later."""
+    if request.get('target') is not None:
+        raise ValueError('Build request must not contain deployment target')
     with locked(root, task_id) as path:
         if path.exists():
             record = json.loads(path.read_text())
             if record['request'] != request:
                 raise ValueError('Task ID already belongs to a different request')
             return record
-        record = {'task_id': task_id, 'request': request, 'state': 'prepared',
-                  'history': [], 'created': int(time.time())}
+        record = {'task_id': task_id, 'request': request, 'deployment': None,
+                  'state': 'prepared', 'history': [], 'created': int(time.time())}
+        save(path, record)
+        return record
+
+
+def set_deployment(root, task_id, deployment):
+    """Record the explicit operator-approved server IP and mode. Idempotent."""
+    target = deployment.get('target', '')
+    mode = deployment.get('mode', '')
+    if not TARGET_PATTERN.fullmatch(target):
+        raise ValueError('Invalid IPv4 deployment target')
+    if mode not in DEPLOYMENT_MODES:
+        raise ValueError('Deployment mode must be first-install or upgrade')
+    with locked(root, task_id) as path:
+        record = json.loads(path.read_text())
+        if record['deployment'] is not None and record['deployment'] != deployment:
+            raise ValueError('Deployment selection already recorded; cannot silently drift')
+        record['deployment'] = dict(target=target, mode=mode)
         save(path, record)
         return record
 
@@ -74,6 +94,14 @@ def transition(root, task_id, state, evidence):
                              for k in ['source_sha', 'config_sha', 'android_sha']))
             if not valid:
                 raise ValueError('Verified publication evidence is required')
+        if state == 'deploying':
+            deployment = record.get('deployment')
+            if not deployment:
+                raise ValueError('Deployment target and mode must be explicitly recorded')
+            if not TARGET_PATTERN.fullmatch(deployment['target']):
+                raise ValueError('Recorded deployment target is invalid')
+            if deployment['mode'] not in DEPLOYMENT_MODES:
+                raise ValueError('Recorded deployment mode is invalid')
         if state == 'verified' and not all(evidence.get(k) is True for k in
                 ['health', 'authentication', 'persistence', 'business']):
             raise ValueError('Runtime acceptance evidence is incomplete')
@@ -86,7 +114,7 @@ def transition(root, task_id, state, evidence):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['create', 'status', 'transition'])
+    parser.add_argument('action', choices=['create', 'status', 'transition', 'set-deployment'])
     parser.add_argument('task_id')
     parser.add_argument('--json', default='{}', help='Non-secret request/evidence only')
     parser.add_argument('--state', choices=list(NEXT))
@@ -95,6 +123,8 @@ def main():
         result = json.loads(task_path(ROOT, args.task_id).read_text())
     elif args.action == 'create':
         result = create_task(ROOT, args.task_id, json.loads(args.json))
+    elif args.action == 'set-deployment':
+        result = set_deployment(ROOT, args.task_id, json.loads(args.json))
     else:
         result = transition(ROOT, args.task_id, args.state, json.loads(args.json))
     print(json.dumps(result, indent=2))
