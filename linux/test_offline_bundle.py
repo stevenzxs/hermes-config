@@ -28,7 +28,7 @@ class VerificationTests(unittest.TestCase):
     def fixture(self, root):
         for name in bundle.PAYLOAD:
             (root / name).write_text('fixture')
-        manifest = dict(imageId='sha256:' + 'a' * 64, sourceCommit=bundle.SOURCE,
+        manifest = dict(imageId='sha256:' + 'a' * 64, sourceCommit='e' * 40,
                         registryImage=bundle.REGISTRY + '@sha256:' + 'b' * 64,
                         buildConfigCommit='c' * 40, packagingConfigCommit='d' * 40,
                         platform='linux/amd64', localTag='hermes-offline:test')
@@ -38,7 +38,7 @@ class VerificationTests(unittest.TestCase):
     def test_accept_complete(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d); self.fixture(p)
-            self.assertEqual(bundle.verify(p)['sourceCommit'], bundle.SOURCE)
+            self.assertEqual(bundle.verify(p)['sourceCommit'], 'e' * 40)
 
     def test_reject_modified(self):
         with tempfile.TemporaryDirectory() as d:
