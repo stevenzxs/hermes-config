@@ -2,6 +2,8 @@
 
 ## Optional manual password tool
 
+Android shared API routing and incident acceptance: [2026-11-19 Android messages 401](../docs/2026-11-19-android-messages-401.md). Bearer session/model/jobs requests use Gateway; browser Cookie requests continue to use Dashboard.
+
 `change-dashboard-password.sh` is an **additional manual utility only**, not part of the normal installation, build, release or deployment flow. No workflow or installer invokes it. Review and copy it to the approved 150 host, then run `sudo bash change-dashboard-password.sh` interactively. It requires explicit `CHANGE` confirmation, accepts passwords of at least 8 characters, rotates the native session secret, and recreates only gateway with all six existing Compose files. It does not change Caddy or the API token. Credentials remain root-only outside Git. The tool is specific to the current 150 layout and username `steven`; do not run unchanged on other instances. A successful command is not proof of login acceptance; verify the new password and rejection of the old password after startup.
 
 Compatible source: `3b421578588243f920886e6fe79a6faa87ea026e`; reuse the installed image, do not build on the server.

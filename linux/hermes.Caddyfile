@@ -1,4 +1,14 @@
 hermes.whclaw.top {
+    # Shared API paths: Bearer clients use Gateway; browser cookies use Dashboard.
+    @gatewayClient {
+        path /api/sessions /api/sessions/* /api/model/options /api/jobs /api/jobs/*
+        header Authorization "Bearer *"
+    }
+    handle @gatewayClient {
+        reverse_proxy hermes-agent:8642 {
+            flush_interval -1
+        }
+    }
     @gateway path /health /health/* /v1 /v1/*
     handle @gateway {
         reverse_proxy hermes-agent:8642 {
