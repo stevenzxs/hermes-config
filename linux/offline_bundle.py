@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tarfile
 
-SOURCE = '3b421578588243f920886e6fe79a6faa87ea026e'
+SOURCE = None  # Read from build-record.json, not hardcoded
 REGISTRY = 'ghcr.io/stevenzxs/hermes-agent'
 PAYLOAD = {'image.tar.gz', 'install-offline.sh', 'compose.yml', 'offline_bundle.py', 'README.md'}
 FILES = PAYLOAD | {'manifest.json'}
@@ -42,7 +42,8 @@ def verify(root):
         raise ValueError('Invalid registry identity')
     for k in ('buildConfigCommit', 'packagingConfigCommit'):
         if not re.fullmatch('[0-9a-f]{40}', m[k]): raise ValueError('Invalid config identity')
-    if m['sourceCommit'] != SOURCE or m['platform'] != 'linux/amd64': raise ValueError('Wrong baseline')
+    if not re.fullmatch('[0-9a-f]{40}', m['sourceCommit']): raise ValueError('Invalid source commit')
+    if m['platform'] != 'linux/amd64': raise ValueError('Wrong platform')
     if not re.fullmatch('hermes-offline:[a-z0-9-]+', m['localTag']): raise ValueError('Invalid local tag')
     return m
 
@@ -67,7 +68,8 @@ def pack(delivery, root):
     repo = Path(__file__).resolve().parent.parent
     if output('git', '-C', str(repo), 'status', '--porcelain'): raise ValueError('Config must be clean')
     record = json.loads((delivery / 'build-record.json').read_text())
-    if record['sourceCommit'] != SOURCE: raise ValueError('Wrong source')
+    source = record['sourceCommit']
+    if not re.fullmatch(r'[0-9a-f]{40}', source): raise ValueError('Invalid source commit')
     smoke = json.loads((delivery / 'gateway-smoke.json').read_text())
     if smoke != dict(health=200, unauthenticated=401, wrong_token=401, authenticated=200):
         raise ValueError('Missing gateway acceptance')
@@ -80,11 +82,11 @@ def pack(delivery, root):
     inspect = json.loads(output('docker', 'image', 'inspect', registry))[0]
     if registry not in inspect['RepoDigests']: raise ValueError('Published digest not in local image')
     labels = inspect['Config']['Labels']
-    if labels['org.opencontainers.image.revision'] != SOURCE: raise ValueError('Wrong source label')
+    if labels['org.opencontainers.image.revision'] != source: raise ValueError('Wrong source label')
     if labels['io.stevenzxs.hermes.config-revision'] != record['configCommit']: raise ValueError('Wrong build config')
     if inspect['Os'] != 'linux' or inspect['Architecture'] != 'amd64': raise ValueError('Wrong platform')
     root.mkdir(parents=True)
-    tag = 'hermes-offline:src-' + SOURCE[:12] + '-cfg-' + record['configCommit'][:12]
+    tag = 'hermes-offline:src-' + source[:12] + '-cfg-' + record['configCommit'][:12]
     subprocess.run(['docker', 'tag', inspect['Id'], tag], check=True)
     with (root / 'image.tar.gz').open('wb') as target:
         proc = subprocess.Popen(['docker', 'save', tag], stdout=subprocess.PIPE)
@@ -97,7 +99,7 @@ def pack(delivery, root):
     for name, src in [('install-offline.sh', 'install-offline.sh'), ('compose.yml', 'compose.yml'),
                       ('offline_bundle.py', 'offline_bundle.py'), ('README.md', 'OFFLINE.md')]:
         shutil.copyfile(repo / 'linux' / src, root / name)
-    m = dict(sourceCommit=SOURCE, buildConfigCommit=record['configCommit'],
+    m = dict(sourceCommit=source, buildConfigCommit=record['configCommit'],
              packagingConfigCommit=output('git', '-C', str(repo), 'rev-parse', 'HEAD'),
              registryImage=registry, imageId=archive_image_id(root / 'image.tar.gz'),
              platform='linux/amd64', localTag=tag)

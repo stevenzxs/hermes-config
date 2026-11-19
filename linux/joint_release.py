@@ -40,8 +40,8 @@ def validate_request(request):
     if type(code) is not int or type(previous) is not int \
             or not previous < code <= 2100000000:
         raise ValueError('android_code must exceed previous_android_code')
-    if request.get('target') != TARGET:
-        raise ValueError(f'Only the explicitly approved {TARGET} target is supported')
+    if request.get('target') is not None:
+        raise ValueError('Build request must not contain deployment target')
     return request
 
 
@@ -83,7 +83,7 @@ def load_record(task_id):
 
 
 def cmd_prepare(args):
-    request = {'target': TARGET, 'source_sha': args.source_sha,
+    request = {'source_sha': args.source_sha,
                'android_sha': args.android_sha, 'config_sha': args.config_sha,
                'version': args.version, 'android_code': args.android_code,
                'previous_android_code': args.previous_android_code}
