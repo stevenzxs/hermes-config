@@ -7,20 +7,21 @@ description: Android对话请求修改Hermes服务端、推送main、联合构�
 
 ## Current readiness gate
 
-Joint release workflow (`.github/workflows/hermes-joint-release.yml`) and the
-150 orchestrator (`linux/joint_release.py`) are implemented and unit-tested,
-but NO real joint release Run has been dispatched or verified yet. The 115
-deploy executor step is still preparation-only: no verified digest from a
-joint Run exists. Do not invoke upstream workflows or local builds as a
-substitute. Explain this blocker if asked to release now. A written procedure
-is not evidence of a completed release.
+Joint release workflow (`.github/workflows/hermes-joint-release.yml`) now auto-allocates
+joint revisions from the durable ledger (`linux/revision_ledger.py`) before building.
+Manual version/android_code inputs are removed; only `source_sha`, `android_sha`, and
+`task_id` are required. Deployment target and mode (first-install/upgrade) are recorded
+separately via `delivery_task.py set-deployment` after publication, never inferred from
+build inputs. The 150 orchestrator (`linux/joint_release.py`) tracks the Run; deployment
+uses the offline bundle with explicit IP/mode selection.
 
-Usage after explicit owner confirmation of fixed version/SHAs/targets:
+Usage after explicit owner confirmation of fixed SHAs:
 `python3 linux/joint_release.py prepare --task-id <id> --config-sha <main-sha>
---source-sha <sha> --android-sha <sha> --version <v> --android-code <n>
---previous-android-code <n>`, then `dispatch --task-id <id>`, poll
+--source-sha <sha> --android-sha <sha>`, then `dispatch --task-id <id>`, poll
 `status --task-id <id>`, and only after artifact/digest verification record
-`verify`. Reusing a task ID with the same request returns the record; never
+`verify`. Deployment requires explicit target/mode: `python3 linux/delivery_task.py
+set-deployment <id> --json '{"target":"<ip>","mode":"upgrade"}'` before any
+deploy action. Reusing a task ID with the same request returns the record; never
 dispatch twice for an uncertain outcome.
 
 ## Approved architecture
@@ -41,9 +42,10 @@ dispatch twice for an uncertain outcome.
 ## Task contract and recovery
 
 Read knowledgebase standards/ledger and repository AGENTS before edits. Require
-concrete change request, task ID, release version, Android versionCode, target,
-and scope approval. Existing authorization is not permission for unrelated
-changes, destructive operations, firewall/TLS changes or secret redistribution.
+concrete change request, task ID, fixed source/config SHAs, and scope approval.
+Deployment target and mode (first-install/upgrade) are explicitly recorded after
+publication, not in the build request. Existing authorization is not permission for
+unrelated changes, destructive operations, firewall/TLS changes or secret redistribution.
 
 Use `linux/delivery_task.py` from the reviewed config checkout to save non-secret
 checkpoints under `/opt/data/delivery-controller/tasks`. Reusing a task ID with
@@ -67,5 +69,6 @@ acceptance; OpenCode commands are preparation only.
 out, left an incomplete worktree and index lock. Do not commit apparent deletion
 entries. Android main 6a880cdb differs from signed independent source 187fc049;
 preserve package/signing identity before planning main migration. Joint Actions,
-version policy, real APK checks, online deploy, runtime model/entrypoint and
-Android API approval/reconnect behavior still require implementation/verification.
+real APK checks, online deploy, runtime model/entrypoint and Android API
+approval/reconnect behavior still require implementation/verification. Revision
+allocation ledger must be initialized on the controller before first real dispatch.
