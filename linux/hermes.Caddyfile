@@ -1,5 +1,13 @@
 hermes.whclaw.top {
-    reverse_proxy hermes-agent:8642 {
-        flush_interval -1
+    @gateway path /health /health/* /v1 /v1/*
+    handle @gateway {
+        reverse_proxy hermes-agent:8642 {
+            flush_interval -1
+        }
+    }
+    handle {
+        reverse_proxy hermes-agent:9119 {
+            flush_interval -1
+        }
     }
 }

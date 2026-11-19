@@ -29,6 +29,8 @@ First-install is intentionally not an upgrade command: a second invocation must 
 
 ## Access and uninstall
 
+Optional existing-image HTTPS dashboard: follow [DASHBOARD.md](DASHBOARD.md) and append `compose.dashboard.yml` to the instance's existing overrides. Use native password authentication, no Caddy Basic Auth, and retain Gateway `/health` and `/v1/*` routes. This requires explicit host/config-change approval and does not authorize image rebuilding.
+
 ## Explicit optional offline node
 
 Only after approval for failed registry delivery, use offline_bundle.py pack with a verified delivery directory. Follow OFFLINE.md for outer/inner checksums and provenance checks, then install-offline.sh on the approved host. Do not invoke this automatically from build-image.sh, publish-image.sh or install-first.sh. Save/load image ID, registry digest and archive hash are different identities. Stop any prior pull/waiting installer before switching. The package excludes all runtime secrets/data; no global Docker changes. Offline transfer does not prove model connectivity or replace deployment/rollback acceptance.
