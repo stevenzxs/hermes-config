@@ -11,6 +11,12 @@ on:
       task_id:
         description: Unique task ID for this delivery batch
         required: true
+      version:
+        description: Ledger-allocated unified versionName (from revision ledger)
+        required: true
+      android_code:
+        description: Ledger-allocated Android versionCode (from revision ledger)
+        required: true
 permissions:
   contents: read
   packages: write
@@ -22,10 +28,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
-      version: ${{ steps.allocate.outputs.version }}
-      android_code: ${{ steps.allocate.outputs.android_code }}
-      revision: ${{ steps.allocate.outputs.revision }}
-      image_tag: ${{ steps.allocate.outputs.image_tag }}
+      version: ${{ inputs.version }}
+      android_code: ${{ inputs.android_code }}
+      revision: ${{ steps.validate.outputs.revision }}
+      image_tag: ${{ steps.validate.outputs.image_tag }}
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
@@ -44,66 +50,42 @@ jobs:
           path: android
           fetch-depth: 0
           persist-credentials: false
-      - name: Allocate joint revision
-        id: allocate
+      - name: Validate ledger-allocated inputs
+        id: validate
         env:
+          VERSION: ${{ inputs.version }}
+          ANDROID_CODE: ${{ inputs.android_code }}
           TASK_ID: ${{ inputs.task_id }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           ANDROID_SHA: ${{ inputs.android_sha }}
           CONFIG_SHA: ${{ github.sha }}
-          RUN_ID: ${{ github.run_id }}
-          ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          install -d -m 0700 /opt/data/delivery-controller/revision-ledger
-          install -d -m 0700 /opt/data/delivery-controller/revision-ledger-backups
-          request=$(mktemp)
-          python3 - "$request" <<'PY'
-          import json, os, sys
-          pathlib_out = sys.argv[1]
-          request = dict(
-              repository='stevenzxs/hermes-config',
-              workflow='hermes-joint-release.yml',
-              task_id=os.environ['TASK_ID'],
-              run_id=os.environ['RUN_ID'],
-              source_sha=os.environ['SOURCE_SHA'],
-              android_sha=os.environ['ANDROID_SHA'],
-              config_sha=os.environ['CONFIG_SHA'],
-          )
-          open(pathlib_out, 'w').write(json.dumps(request))
-          PY
-          result=$(python3 linux/revision_ledger.py allocate \
-            --ledger /opt/data/delivery-controller/revision-ledger/ledger.sqlite \
-            --backups /opt/data/delivery-controller/revision-ledger-backups \
-            --request "$request" --attempt "$ATTEMPT" --task-id "$TASK_ID")
-          rm -f "$request"
-          echo "$result" > allocation.json
           python3 - <<'PY'
-          import json, os
-          a = json.load(open('allocation.json'))
-          v = a['versions']
-          for key in ('agent_version', 'android_version', 'android_code', 'image_tag'):
-              print(f"{key}={v[key]}", file=open(os.environ['GITHUB_OUTPUT'], 'a'))
-          print(f"revision={v['revision']}", file=open(os.environ['GITHUB_OUTPUT'], 'a'))
-          print(f"version={v['agent_version']}", file=open(os.environ['GITHUB_OUTPUT'], 'a'))
-          PY
-          echo "Allocated revision: $(python3 -c "import json; print(json.load(open('allocation.json'))['versions']['revision'])")"
-      - name: Validate fixed inputs and committed version contract
-        env:
-          INPUTS: ${{ toJSON(inputs) }}
-          CONFIG_SHA: ${{ github.sha }}
-          ALLOCATED_VERSION: ${{ steps.allocate.outputs.version }}
-          ALLOCATED_CODE: ${{ steps.allocate.outputs.android_code }}
-        run: |
-          python3 - <<'PY'
-          import json, os, pathlib
-          i = json.loads(os.environ['INPUTS'])
-          r = dict(source_sha=i['source_sha'], android_sha=i['android_sha'],
+          import json, os, pathlib, sys
+          sys.path.insert(0, 'linux')
+          from revision_versions import versions_for_revision
+          version = os.environ['VERSION']
+          code = int(os.environ['ANDROID_CODE'])
+          for rev in range(1, 1000):
+              v = versions_for_revision(rev)
+              if v['agent_version'] == version and v['android_code'] == code:
+                  break
+          else:
+              raise ValueError(f'Version {version}+{code} is not a valid ledger allocation')
+          print(f'revision={rev}', file=open(os.environ['GITHUB_OUTPUT'], 'a'))
+          print(f'image_tag={v["image_tag"]}', file=open(os.environ['GITHUB_OUTPUT'], 'a'))
+          r = dict(source_sha=os.environ['SOURCE_SHA'],
+                   android_sha=os.environ['ANDROID_SHA'],
                    config_sha=os.environ['CONFIG_SHA'],
-                   version=os.environ['ALLOCATED_VERSION'],
-                   android_code=int(os.environ['ALLOCATED_CODE']))
+                   version=version, android_code=code)
           pathlib.Path('request.json').write_text(json.dumps(r))
           PY
+          echo "Validated ledger allocation: version=$VERSION android_code=$ANDROID_CODE task=$TASK_ID"
+      - name: Validate fixed inputs and committed version contract
+        env:
+          CONFIG_SHA: ${{ github.sha }}
+        run: |
           python3 -B -m unittest discover -s linux -p 'test_*.py'
           python3 linux/release_contract.py request.json android
           test "$(git -C source rev-parse HEAD)" = "${{ inputs.source_sha }}"
@@ -126,14 +108,14 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           CONFIG_SHA: ${{ github.sha }}
-          VERSION: ${{ needs.admit.outputs.version }}
+          VERSION: ${{ inputs.version }}
           IMAGE_TAG: ${{ needs.admit.outputs.image_tag }}
         run: |
           set -euo pipefail
           commit_date=$(git -C source show -s --format=%ct "$SOURCE_SHA")
           python3 source/scripts/write_install_stamp.py \
             --output source/install-stamp.json --commit "$SOURCE_SHA" \
-            --base-version 0.23.1 --display-version "${{ needs.admit.outputs.version }}" --distance 0 \
+            --base-version 0.23.1 --display-version "${{ inputs.version }}" --distance 0 \
             --commit-date "$commit_date" \
             --distribution docker --update-mechanism external --source ci
           unique="ghcr.io/stevenzxs/hermes-agent:src-${SOURCE_SHA:0:12}-cfg-${CONFIG_SHA:0:12}"
@@ -182,7 +164,6 @@ jobs:
           VERSION: ${{ needs.admit.outputs.image_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           CONFIG_SHA: ${{ github.sha }}
-          ALLOCATED_VERSION: ${{ needs.admit.outputs.version }}
         run: |
           set -euo pipefail
           tok=$(curl -s "https://ghcr.io/token?scope=repository:stevenzxs/hermes-agent:pull" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
@@ -250,8 +231,8 @@ jobs:
     uses: ./.github/workflows/hermes-android.yml
     with:
       android_sha: ${{ inputs.android_sha }}
-      version: ${{ needs.admit.outputs.version }}
-      android_code: ${{ needs.admit.outputs.android_code }}
+      version: ${{ inputs.version }}
+      android_code: ${{ inputs.android_code }}
     secrets: inherit
   package:
     needs: [admit, image, android]
@@ -272,8 +253,8 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
           CONFIG_SHA: ${{ github.sha }}
           ANDROID_SHA: ${{ inputs.android_sha }}
-          VERSION: ${{ needs.admit.outputs.version }}
-          ANDROID_CODE: ${{ needs.admit.outputs.android_code }}
+          VERSION: ${{ inputs.version }}
+          ANDROID_CODE: ${{ inputs.android_code }}
           DIGEST: ${{ needs.image.outputs.digest }}
         run: |
           set -euo pipefail
@@ -296,8 +277,6 @@ jobs:
               packageName=json.loads(pathlib.Path('android-baseline.json').read_text())['package_name'],
               certificateSha256=json.loads(pathlib.Path('android-baseline.json').read_text())['certificate_sha256'],
               runUrl=f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
-          print('Allocated version: ${{ needs.admit.outputs.version }}')
-          print('Allocated android_code: ${{ needs.admit.outputs.android_code }}')
           pathlib.Path('release-manifest.json').write_text(json.dumps(manifest, indent=2))
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

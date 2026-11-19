@@ -1,9 +1,10 @@
 """Hermes-side orchestration for the joint release chain.
 
-Schedules the reviewed hermes-config Actions workflow with fixed three-repository
-SHAs, tracks the Run and records evidence through linux/delivery_task.py.
-This tool never prints tokens and never repeats a dispatch for an uncertain
-outcome: query the recorded Run ID first.
+Allocates the joint revision from the durable controller ledger at prepare time,
+schedules the reviewed hermes-config Actions workflow with fixed SHAs and the
+allocated versions, binds the dispatched Run ID back into the ledger, and tracks
+evidence through linux/delivery_task.py. Never prints tokens and never repeats a
+dispatch for an uncertain outcome: query the recorded Run ID first.
 """
 import argparse
 import json
@@ -16,13 +17,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import delivery_task
+import revision_ledger
 
 GH = '/opt/data/delivery-controller/gh'
 REPO = 'stevenzxs/hermes-config'
 WORKFLOW = 'hermes-joint-release.yml'
-TARGET = '115.190.243.21'
+LEDGER = Path('/opt/data/delivery-controller/revision-ledger/ledger.sqlite')
+LEDGER_BACKUPS = Path('/opt/data/delivery-controller/revision-ledger-backups')
 SEMVER = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
-                    r'(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?')
+                    r'(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?'
+                    r'(?:\+r[1-9][0-9]*)?')
 SHA = re.compile(r'[0-9a-f]{40}')
 SECRET_LIKE = re.compile(r'(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|'
                          r'gho_[A-Za-z0-9]{20,}|ghs_[A-Za-z0-9]{20,})')
@@ -34,12 +38,10 @@ def validate_request(request):
         if not SHA.fullmatch(str(request.get(key, ''))):
             raise ValueError(f'{key} must be a full lowercase commit SHA')
     if not SEMVER.fullmatch(str(request.get('version', ''))):
-        raise ValueError('version must be a committed semantic versionName')
+        raise ValueError('version must be the ledger-allocated versionName')
     code = request.get('android_code')
-    previous = request.get('previous_android_code')
-    if type(code) is not int or type(previous) is not int \
-            or not previous < code <= 2100000000:
-        raise ValueError('android_code must exceed previous_android_code')
+    if type(code) is not int or not 3048 < code <= 2100000000:
+        raise ValueError('android_code must exceed the 3048 baseline within platform range')
     if request.get('target') is not None:
         raise ValueError('Build request must not contain deployment target')
     return request
@@ -56,9 +58,9 @@ def build_dispatch_args(request, ref='main'):
     return [GH, 'workflow', 'run', WORKFLOW, '--repo', REPO, '--ref', ref,
             '-f', f"source_sha={request['source_sha']}",
             '-f', f"android_sha={request['android_sha']}",
+            '-f', f"task_id={request['task_id']}",
             '-f', f"version={request['version']}",
-            '-f', f"android_code={request['android_code']}",
-            '-f', f"previous_android_code={request['previous_android_code']}"]
+            '-f', f"android_code={request['android_code']}"]
 
 
 def find_run_id(runs, config_sha):
@@ -83,10 +85,14 @@ def load_record(task_id):
 
 
 def cmd_prepare(args):
-    request = {'source_sha': args.source_sha,
-               'android_sha': args.android_sha, 'config_sha': args.config_sha,
-               'version': args.version, 'android_code': args.android_code,
-               'previous_android_code': args.previous_android_code}
+    request = {'task_id': args.task_id, 'source_sha': args.source_sha,
+               'android_sha': args.android_sha, 'config_sha': args.config_sha}
+    allocation = revision_ledger.allocate(LEDGER, LEDGER_BACKUPS, {
+        'repository': REPO, 'workflow': WORKFLOW, **request})
+    versions = allocation['versions']
+    request.update(version=versions['agent_version'],
+                   android_code=versions['android_code'],
+                   revision=versions['revision'], image_tag=versions['image_tag'])
     validate_request(request)
     record = delivery_task.create_task(delivery_task.ROOT, args.task_id, request)
     print(json.dumps(record, indent=2))
@@ -112,6 +118,7 @@ def cmd_dispatch(args):
     if run_id is None:
         raise SystemExit('Dispatch accepted but Run not visible yet; '
                          'query status later, do not dispatch again')
+    revision_ledger.bind_run(LEDGER, LEDGER_BACKUPS, args.task_id, run_id, 1)
     record = delivery_task.transition(delivery_task.ROOT, args.task_id,
                                       'building', {'run_id': run_id})
     print(json.dumps(record, indent=2))
@@ -140,22 +147,28 @@ def cmd_verify(args):
     print(json.dumps(record, indent=2))
 
 
+def cmd_set_deployment(args):
+    record = delivery_task.set_deployment(delivery_task.ROOT, args.task_id,
+                                          {'target': args.target, 'mode': args.mode})
+    print(json.dumps(record, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'dispatch', 'status', 'verify'])
+    parser.add_argument('action', choices=['prepare', 'dispatch', 'status', 'verify', 'set-deployment'])
     parser.add_argument('--task-id', required=True)
     parser.add_argument('--source-sha')
     parser.add_argument('--android-sha')
     parser.add_argument('--config-sha')
-    parser.add_argument('--version')
-    parser.add_argument('--android-code', type=int)
-    parser.add_argument('--previous-android-code', type=int)
     parser.add_argument('--run-conclusion')
     parser.add_argument('--artifacts-verified', action='store_true')
     parser.add_argument('--digest')
+    parser.add_argument('--target')
+    parser.add_argument('--mode', choices=['first-install', 'upgrade'])
     args = parser.parse_args()
     actions = {'prepare': cmd_prepare, 'dispatch': cmd_dispatch,
-               'status': cmd_status, 'verify': cmd_verify}
+               'status': cmd_status, 'verify': cmd_verify,
+               'set-deployment': cmd_set_deployment}
     actions[args.action](args)
 
 
