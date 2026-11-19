@@ -1,5 +1,6 @@
 """Real SQLite/filesystem tests; no product build or allocation of real versions."""
 from concurrent.futures import ThreadPoolExecutor
+import json
 from contextlib import closing
 from pathlib import Path
 import sqlite3
@@ -10,7 +11,7 @@ import revision_ledger as ledger
 
 
 REQUEST = dict(repository='stevenzxs/hermes-config', workflow='hermes-joint-release.yml',
-               task_id='reasoning-fix', run_id='12345', source_sha='a' * 40,
+               task_id='reasoning-fix', source_sha='a' * 40,
                android_sha='b' * 40, config_sha='c' * 40)
 
 
@@ -29,7 +30,7 @@ class LedgerTests(unittest.TestCase):
 
     def allocate(self, **kwargs):
         request = dict(REQUEST, **kwargs)
-        return ledger.allocate(self.db, self.backups, request, attempt=1)
+        return ledger.allocate(self.db, self.backups, request)
 
     def test_missing_ledger_never_recreated(self):
         with self.assertRaisesRegex(ValueError, 'initializ'):
@@ -43,54 +44,64 @@ class LedgerTests(unittest.TestCase):
         with self.assertRaises((ValueError, FileExistsError)):
             self.initialize()
 
-    def test_new_runs_increment_and_rerun_reuses_allocation(self):
+    def test_new_tasks_increment_and_task_reuse_is_idempotent(self):
         self.initialize()
         a = self.allocate()
         self.assertEqual(a['versions']['agent_version'], '0.23.1+r1')
         self.assertEqual(a['versions']['android_version'], '4.0.0+r1')
         self.assertEqual(a['versions']['android_code'], 30491)
-        again = ledger.allocate(self.db, self.backups, REQUEST, attempt=2)
-        self.assertEqual(a, again)
-        self.assertEqual(self.allocate(run_id='12346')['versions']['revision'], 2)
-        with closing(sqlite3.connect(self.db)) as con:
-            self.assertEqual(con.execute('SELECT run_id,attempt FROM attempts ORDER BY run_id,attempt').fetchall(),
-                             [('12345', 1), ('12345', 2), ('12346', 1)])
+        before = sorted(p.name for p in self.backups.iterdir())
+        self.assertEqual(a, self.allocate())
+        self.assertEqual(before, sorted(p.name for p in self.backups.iterdir()),
+                         'idempotent reuse must not append snapshots')
+        self.assertEqual(self.allocate(task_id='other-task')['versions']['revision'], 2)
 
     def test_failure_or_cancel_does_not_reclaim_revision(self):
         self.initialize()
         self.allocate()  # No successful publication is needed to consume r1.
-        self.assertEqual(self.allocate(run_id='12346')['versions']['revision'], 2)
+        self.assertEqual(self.allocate(task_id='t2')['versions']['revision'], 2)
 
-    def test_same_attempt_is_idempotent_without_extra_backups(self):
-        self.initialize()
-        a = self.allocate()
-        before = sorted(p.name for p in self.backups.iterdir())
-        self.assertEqual(a, self.allocate())
-        self.assertEqual(before, sorted(p.name for p in self.backups.iterdir()))
-
-    def test_changed_input_on_same_run_is_rejected(self):
+    def test_changed_input_on_same_task_is_rejected(self):
         self.initialize()
         self.allocate()
-        for key in ('source_sha', 'android_sha', 'config_sha', 'task_id'):
+        for key in ('source_sha', 'android_sha', 'config_sha'):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 self.allocate(**{key: 'e' * 40})
 
-    def test_wrong_namespace_repository_types_or_attempt_refused(self):
+    def test_wrong_namespace_types_refused(self):
         self.initialize()
-        for changes in ({'repository': 'other/project'}, {'run_id': 123},
-                        {'config_sha': 'main'}, {'task_id': '../x'}):
+        for changes in ({'repository': 'other/project'}, {'task_id': '../x'},
+                        {'config_sha': 'main'}, {'run_id': '1'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 self.allocate(**changes)
-        for attempt in (0, True, '1'):
-            with self.assertRaises(ValueError):
-                ledger.allocate(self.db, self.backups, REQUEST, attempt=attempt)
 
-    def test_allocations_and_attempts_are_append_only(self):
+    def test_bind_run_records_dispatch_and_attempts(self):
         self.initialize()
         self.allocate()
+        ledger.bind_run(self.db, self.backups, 'reasoning-fix', 12345, 1)
+        # Rerun of the same run reuses inputs; binding again is idempotent per attempt.
+        ledger.bind_run(self.db, self.backups, 'reasoning-fix', 12345, 1)
+        ledger.bind_run(self.db, self.backups, 'reasoning-fix', 12345, 2)
+        with closing(sqlite3.connect(self.db)) as con:
+            rows = con.execute('SELECT task_id,run_id,attempt FROM dispatches ORDER BY attempt').fetchall()
+        self.assertEqual(rows, [('reasoning-fix', 12345, 1), ('reasoning-fix', 12345, 2)])
+
+    def test_bind_requires_existing_allocation_and_valid_run(self):
+        self.initialize()
+        with self.assertRaises(ValueError):
+            ledger.bind_run(self.db, self.backups, 'unknown-task', 1, 1)
+        self.allocate()
+        for run_id in (0, -1, 'abc'):
+            with self.assertRaises((ValueError, sqlite3.Error)):
+                ledger.bind_run(self.db, self.backups, 'reasoning-fix', run_id, 1)
+
+    def test_allocations_and_dispatches_are_append_only(self):
+        self.initialize()
+        self.allocate()
+        ledger.bind_run(self.db, self.backups, 'reasoning-fix', 12345, 1)
         with closing(sqlite3.connect(self.db)) as con:
             for sql in ('DELETE FROM allocations', 'UPDATE allocations SET revision=9',
-                        'DELETE FROM attempts', 'UPDATE attempts SET attempt=9'):
+                        'DELETE FROM dispatches', 'UPDATE dispatches SET attempt=9'):
                 with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
                     con.execute(sql)
 
@@ -98,7 +109,7 @@ class LedgerTests(unittest.TestCase):
         self.initialize()
         def allocate(index):
             return ledger.allocate(self.db, self.backups,
-                                   dict(REQUEST, run_id=str(1000 + index)), attempt=1)
+                                   dict(REQUEST, task_id=f'task-{index}'))
         with ThreadPoolExecutor(max_workers=4) as pool:
             records = list(pool.map(allocate, range(8)))
         self.assertEqual(sorted(r['versions']['revision'] for r in records), list(range(1, 9)))
@@ -109,7 +120,7 @@ class LedgerTests(unittest.TestCase):
         snapshot = sorted(self.backups.glob('*.sqlite'))[-1]
         snapshot.write_bytes(b'corrupt')
         with self.assertRaisesRegex(ValueError, 'backup|witness'):
-            self.allocate(run_id='12346')
+            self.allocate(task_id='t2')
 
     def test_stale_primary_refused_and_explicit_recovery_verified(self):
         self.initialize()
@@ -117,9 +128,9 @@ class LedgerTests(unittest.TestCase):
         self.allocate()
         self.db.write_bytes(old)
         with self.assertRaisesRegex(ValueError, 'stale|witness'):
-            self.allocate(run_id='12346')
+            self.allocate(task_id='t2')
         ledger.recover(self.db, self.backups)
-        self.assertEqual(self.allocate(run_id='12346')['versions']['revision'], 2)
+        self.assertEqual(self.allocate(task_id='t2')['versions']['revision'], 2)
 
     def test_lost_primary_can_only_be_explicitly_recovered(self):
         self.initialize()
@@ -135,7 +146,7 @@ class LedgerTests(unittest.TestCase):
         self.allocate()
         (self.backups / '00000000.json').unlink()
         with self.assertRaises(ValueError):
-            self.allocate(run_id='12346')
+            self.allocate(task_id='t2')
 
     def test_helper_cli_does_not_auto_create_lost_state(self):
         import subprocess
