@@ -32,6 +32,7 @@ jobs:
       android_code: ${{ inputs.android_code }}
       revision: ${{ steps.validate.outputs.revision }}
       image_tag: ${{ steps.validate.outputs.image_tag }}
+      android_version: ${{ steps.validate.outputs.android_version }}
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
@@ -75,6 +76,7 @@ jobs:
               raise ValueError(f'Version {version}+{code} is not a valid ledger allocation')
           print(f'revision={rev}', file=open(os.environ['GITHUB_OUTPUT'], 'a'))
           print(f'image_tag={v["image_tag"]}', file=open(os.environ['GITHUB_OUTPUT'], 'a'))
+          print(f'android_version={v["android_version"]}', file=open(os.environ['GITHUB_OUTPUT'], 'a'))
           r = dict(source_sha=os.environ['SOURCE_SHA'],
                    android_sha=os.environ['ANDROID_SHA'],
                    config_sha=os.environ['CONFIG_SHA'],
@@ -237,7 +239,7 @@ jobs:
     uses: ./.github/workflows/hermes-android.yml
     with:
       android_sha: ${{ inputs.android_sha }}
-      version: ${{ inputs.version }}
+      version: ${{ needs.admit.outputs.android_version }}
       android_code: ${{ inputs.android_code }}
     secrets: inherit
   package:
@@ -260,6 +262,7 @@ jobs:
           CONFIG_SHA: ${{ github.sha }}
           ANDROID_SHA: ${{ inputs.android_sha }}
           VERSION: ${{ inputs.version }}
+          ANDROID_VERSION: ${{ needs.admit.outputs.android_version }}
           ANDROID_CODE: ${{ inputs.android_code }}
           DIGEST: ${{ needs.image.outputs.digest }}
         run: |
@@ -276,7 +279,8 @@ jobs:
                   for p in sorted(d.glob('*.apk'))}
           assert apks, 'no APK artifacts downloaded'
           manifest = dict(
-              version=os.environ['VERSION'], androidCode=int(os.environ['ANDROID_CODE']),
+              version=os.environ['VERSION'], androidVersion=os.environ['ANDROID_VERSION'],
+              androidCode=int(os.environ['ANDROID_CODE']),
               sourceCommit=os.environ['SOURCE_SHA'], configCommit=os.environ['CONFIG_SHA'],
               androidCommit=os.environ['ANDROID_SHA'],
               image=os.environ['DIGEST'], apks=apks,

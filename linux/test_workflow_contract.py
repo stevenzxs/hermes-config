@@ -63,7 +63,8 @@ class WorkflowContractTests(unittest.TestCase):
         android = w['jobs']['android']
         self.assertEqual(android['uses'], './.github/workflows/hermes-android.yml')
         self.assertIn('version', android['with'])
-        self.assertIn('inputs.version', android['with']['version'])
+        self.assertIn('needs.admit.outputs.android_version', android['with']['version'],
+                      'Android must receive the Android baseline version, not the server version')
         self.assertIn('inputs.android_code', android['with']['android_code'])
 
     def test_package_job_records_allocated_version(self):
