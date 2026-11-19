@@ -1,5 +1,9 @@
 # 150 HTTPS Dashboard
 
+## Optional manual password tool
+
+`change-dashboard-password.sh` is an **additional manual utility only**, not part of the normal installation, build, release or deployment flow. No workflow or installer invokes it. Review and copy it to the approved 150 host, then run `sudo bash change-dashboard-password.sh` interactively. It requires explicit `CHANGE` confirmation, accepts passwords of at least 8 characters, rotates the native session secret, and recreates only gateway with all six existing Compose files. It does not change Caddy or the API token. Credentials remain root-only outside Git. The tool is specific to the current 150 layout and username `steven`; do not run unchanged on other instances. A successful command is not proof of login acceptance; verify the new password and rejection of the old password after startup.
+
 Compatible source: `3b421578588243f920886e6fe79a6faa87ea026e`; reuse the installed image, do not build on the server.
 
 Public URL: https://hermes.whclaw.top. Caddy has **no basic_auth**; Hermes native password login protects the dashboard. Preserve `/health` and `/v1/*` routes to gateway port 8642. All remaining paths go to dashboard port 9119 over the existing caddy-net network. Do not publish port 9119 on the host.
