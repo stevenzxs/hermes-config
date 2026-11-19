@@ -36,7 +36,9 @@ def main():
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    records = json.loads(args.ledger.read_text()) if args.ledger.exists() else []
+    if not args.ledger.is_file():
+        raise ValueError('Explicitly initialized ledger required; never auto-recreate lost state')
+    records = json.loads(args.ledger.read_text())
     revision = next_revision(records, args.run_id)
     if not any(r['run_id'] == args.run_id for r in records):
         records.append(dict(run_id=args.run_id, revision=revision))
