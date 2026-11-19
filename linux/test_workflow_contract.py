@@ -79,6 +79,15 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('inputs.version', env.get('VERSION', ''))
         self.assertIn('inputs.android_code', env.get('ANDROID_CODE', ''))
 
+    def test_android_workflow_builds_with_display_version_override(self):
+        w = yaml.safe_load(ANDROID_WORKFLOW.read_text())
+        build = w['jobs']['build']
+        step = next(s for s in build['steps'] if s.get('name') == 'Verify baseline and build with native Flutter entry')
+        self.assertIn('--build-name "$VERSION"', step['run'])
+        self.assertIn('--build-number', step['run'])
+        self.assertIn('--version-name "$VERSION"', step['run'])
+        self.assertIn("test \"$(git diff --name-only HEAD^ HEAD)\" = \"pubspec.yaml\"", step['run'])
+
     def test_android_workflow_has_no_standalone_dispatch(self):
         w = yaml.safe_load(ANDROID_WORKFLOW.read_text())
         triggers = w[True]

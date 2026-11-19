@@ -47,7 +47,8 @@ def create(root, version, android_code):
         raise ValueError('HEAD is already a joint version commit')
     pubspec = root / 'pubspec.yaml'
     text = pubspec.read_text()
-    replacement = f'version: {version}+{android_code}'
+    base = version.split('+', 1)[0]
+    replacement = f'version: {base}+{android_code}'
     if replacement in text:
         raise ValueError('Checkout already carries this version')
     if len(VERSION_LINE.findall(text)) != 1:

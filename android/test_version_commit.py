@@ -38,7 +38,9 @@ class VersionCommitTests(unittest.TestCase):
             self.assertEqual(record['version'], '4.0.0+r1')
             self.assertEqual(record['android_code'], 30491)
             self.assertEqual(git(root, 'diff', '--name-only', 'HEAD^', 'HEAD'), 'pubspec.yaml')
-            self.assertIn('version: 4.0.0+r1+30491', (root / 'pubspec.yaml').read_text())
+            # pubspec keeps the pub-compatible numeric form; display 4.0.0+r1 comes
+            # from the build's --build-name override.
+            self.assertIn('version: 4.0.0+30491', (root / 'pubspec.yaml').read_text())
             self.assertEqual((root / 'other.txt').read_text(), 'untouched')
             # Determinism: a fresh repo with identical inputs produces the same SHA.
             root2 = Path(d) / 'repo2'

@@ -66,20 +66,24 @@ jobs:
         working-directory: source
         env:
           PUB_CACHE: ${{ github.workspace }}/pub-cache
-          EXPECTED_VERSION: ${{ inputs.version }}+${{ inputs.android_code }}
+          VERSION: ${{ inputs.version }}
           BASELINE_COMMIT: ${{ inputs.android_sha }}
           VERSION_COMMIT: ${{ steps.version.outputs.commit }}
         run: |
           test "$(git rev-parse HEAD)" = "$VERSION_COMMIT"
           test "$(git rev-parse HEAD^)" = "$BASELINE_COMMIT"
           test "$(git diff --name-only HEAD^ HEAD)" = "pubspec.yaml"
-          test "$(sed -n 's/^version:[ \t]*\([^ \t]*\)[ \t]*$/\1/p' pubspec.yaml | head -1)" = "$EXPECTED_VERSION"
+          # pubspec carries the pub-compatible numeric form: baseline+code; the
+          # display version (4.0.0+rN) is applied via --build-name below.
+          test "$(sed -n 's/^version:[ \t]*\([^ \t]*\)[ \t]*$/\1/p' pubspec.yaml | head -1)" = "${VERSION%%+*}+${{ inputs.android_code }}"
           flutter pub get --enforce-lockfile
           python3 -m unittest scripts.test_verify_release_apks scripts.test_licence_evidence scripts.test_independent_identity
           flutter analyze --no-pub --fatal-infos
           flutter test --no-pub
-          flutter build apk --release --no-pub --split-per-abi --split-debug-info=symbols
-          python3 scripts/verify_release_apks.py --target "$(git rev-parse HEAD)" --assets-dir build/app/outputs/flutter-apk
+          flutter build apk --release --no-pub --split-per-abi --split-debug-info=symbols \
+            --build-name "$VERSION" --build-number "${{ inputs.android_code }}"
+          python3 scripts/verify_release_apks.py --target "$(git rev-parse HEAD)" \
+            --assets-dir build/app/outputs/flutter-apk --version-name "$VERSION"
       - name: Record and stage verified APKs
         env:
           RECORD_VERSION: ${{ inputs.version }}+${{ inputs.android_code }}
