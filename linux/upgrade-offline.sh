@@ -30,18 +30,25 @@ backup_dir="$target/backup-$(date +%Y%m%dT%H%M%SZ)"
 install -d -m 0700 "$backup_dir"
 cp -a "$target/.env" "$backup_dir/"
 install -m 0644 "$target/compose.yml" "$backup_dir/compose.yml"
-install -m 0644 "$target/compose.offline.yml" "$backup_dir/compose.offline.yml" 2>/dev/null || true
 # Data directory is preserved in place; only configuration and image reference are updated.
+
+# Build the compose argument list from the instance's complete existing override
+# stack; never silently drop caddy/kimi/dashboard/knowledgebase overrides.
+compose_args=(-f compose.yml)
+for override in "$target"/compose.*.yml; do
+    [ -e "$override" ] || continue
+    install -m 0644 "$override" "$backup_dir/"
+    compose_args+=(-f "$override")
+done
 
 # Update image reference only; preserve runtime.env and all other files.
 printf 'HERMES_IMAGE=%s\n' "$tag" > "$target/.env"
 chmod 0600 "$target/.env"
 install -m 0644 "$bundle/manifest.json" "$target/offline-manifest.json"
 
-# Use complete existing Compose stack (all overrides present in target).
 cd "$target"
-docker compose -f compose.yml -f compose.offline.yml config --quiet
-docker compose -f compose.yml -f compose.offline.yml up -d --pull never
+docker compose "${compose_args[@]}" config --quiet
+docker compose "${compose_args[@]}" up -d --pull never
 
 # Health check.
 sleep 2

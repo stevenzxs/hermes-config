@@ -112,6 +112,7 @@ jobs:
           IMAGE_TAG: ${{ needs.admit.outputs.image_tag }}
         run: |
           set -euo pipefail
+          install -d delivery
           commit_date=$(git -C source show -s --format=%ct "$SOURCE_SHA")
           python3 source/scripts/write_install_stamp.py \
             --output source/install-stamp.json --commit "$SOURCE_SHA" \
@@ -126,7 +127,7 @@ jobs:
             -t "$unique" -t "ghcr.io/stevenzxs/hermes-agent:$IMAGE_TAG" source/
           docker run --rm --network none --entrypoint /opt/hermes/.venv/bin/python "$unique" -c \
             'import json,sys; s=json.load(open("/opt/hermes/install-stamp.json")); p=json.load(open("/etc/hermes/image-provenance.json")); assert s["commit"] == sys.argv[1] == p["revision"]; assert s["baseVersion"] == "0.23.1"; assert s["distribution"] == "docker"; assert s["updateMechanism"] == "external"; print("Internal source identity verified")' \
-            "$SOURCE_SHA"
+            "$SOURCE_SHA" | tee delivery/identity-check.log
           docker run --rm --network none "$unique" --version
       - name: Gateway smoke test on loopback
         env:
@@ -156,6 +157,11 @@ jobs:
                        wrong_token=int(sys.argv[3]), authenticated=int(sys.argv[4]))
           assert smoke == dict(health=200, unauthenticated=401, wrong_token=401, authenticated=200), smoke
           print(json.dumps(smoke))
+          PY
+          python3 - "$health" "$noauth" "$wrong" "$good" > delivery/gateway-smoke.json <<'PY'
+          import json, sys
+          print(json.dumps(dict(health=int(sys.argv[1]), unauthenticated=int(sys.argv[2]),
+                                wrong_token=int(sys.argv[3]), authenticated=int(sys.argv[4]))))
           PY
           docker rm -f hermes-smoke >/dev/null
       - name: Resolve or verify existing version tag

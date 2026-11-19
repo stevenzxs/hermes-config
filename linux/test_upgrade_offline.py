@@ -51,7 +51,14 @@ class UpgradeOfflineTests(unittest.TestCase):
     def test_uses_complete_compose_stack(self):
         content = UPGRADE.read_text()
         self.assertIn('compose.yml', content)
-        self.assertIn('compose.offline.yml', content)
+        self.assertIn('compose.*.yml', content,
+                      'must include every existing compose override, not a fixed subset')
+        self.assertIn('compose_args', content)
+
+    def test_never_fixes_override_list(self):
+        content = UPGRADE.read_text()
+        self.assertNotIn('-f compose.yml -f compose.offline.yml config', content,
+                         'hardcoded two-file stack would drop live overrides')
 
     def test_validates_image_before_stopping(self):
         content = UPGRADE.read_text()
@@ -61,7 +68,7 @@ class UpgradeOfflineTests(unittest.TestCase):
         for i, line in enumerate(lines):
             if 'docker image inspect' in line or 'docker load' in line:
                 validate_idx = i
-            if 'docker compose -f compose.yml -f compose.offline.yml up' in line:
+            if 'compose "${compose_args[@]}" up' in line:
                 stop_idx = i
                 break
         self.assertIsNotNone(validate_idx, 'Image validation step missing')
