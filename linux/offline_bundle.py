@@ -11,7 +11,7 @@ import tarfile
 
 SOURCE = None  # Read from build-record.json, not hardcoded
 REGISTRY = 'ghcr.io/stevenzxs/hermes-agent'
-PAYLOAD = {'image.tar.gz', 'install-offline.sh', 'compose.yml', 'offline_bundle.py', 'README.md'}
+PAYLOAD = {'image.tar.gz', 'install-offline.sh', 'upgrade-offline.sh', 'compose.yml', 'offline_bundle.py', 'README.md'}
 FILES = PAYLOAD | {'manifest.json'}
 
 
@@ -96,8 +96,8 @@ def pack(delivery, root):
         finally:
             proc.stdout.close()
         if proc.wait() != 0: raise ValueError('docker save failed')
-    for name, src in [('install-offline.sh', 'install-offline.sh'), ('compose.yml', 'compose.yml'),
-                      ('offline_bundle.py', 'offline_bundle.py'), ('README.md', 'OFFLINE.md')]:
+    for name, src in [('install-offline.sh', 'install-offline.sh'), ('upgrade-offline.sh', 'upgrade-offline.sh'),
+                      ('compose.yml', 'compose.yml'), ('offline_bundle.py', 'offline_bundle.py'), ('README.md', 'OFFLINE.md')]:
         shutil.copyfile(repo / 'linux' / src, root / name)
     m = dict(sourceCommit=source, buildConfigCommit=record['configCommit'],
              packagingConfigCommit=output('git', '-C', str(repo), 'rev-parse', 'HEAD'),
