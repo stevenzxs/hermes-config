@@ -28,7 +28,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('request', type=Path)
     parser.add_argument('android_source', type=Path)
-    parser.add_argument('--previous-android-code', type=int, required=True)
+    parser.add_argument('--previous-android-code', type=int, default=3048,
+                        help='Published baseline floor; ledger allocations derive codes above it')
     args = parser.parse_args()
     request = json.loads(args.request.read_text())
     validate_release(request, (args.android_source / 'pubspec.yaml').read_text(),
