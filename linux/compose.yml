@@ -15,8 +15,8 @@ services:
       API_SERVER_ENABLED: "true"
       API_SERVER_HOST: "0.0.0.0"
     command: ["gateway", "run"]
-    mem_limit: 1g
-    memswap_limit: 1536m
+    mem_limit: 1536m
+    memswap_limit: 2304m
     cpus: 1.0
     pids_limit: 256
     logging:
