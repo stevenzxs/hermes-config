@@ -47,6 +47,14 @@ def read_policy(path):
 
 def candidate(raw, desired):
     config = load_yaml(raw.decode('utf-8'))
+    if 'approvals' not in config:
+        # Current 150 uses the merged defaults (smart/deny), not an explicit
+        # mapping. Materialize only this approved override, preserving the file.
+        output = raw + b'\napprovals:\n  mode: smart\n  cron_mode: approve\n'
+        expected = dict(config, approvals=desired)
+        if load_yaml(output.decode('utf-8')) != expected:
+            raise ValueError('cannot append approvals safely')
+        return output
     approvals = config.get('approvals', {})
     if approvals.get('mode') != 'smart' or approvals.get('cron_mode') not in ('deny', 'approve'):
         raise ValueError('expected existing smart mode and explicit deny/approve cron mode')

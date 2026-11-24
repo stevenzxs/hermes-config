@@ -19,7 +19,7 @@
 /opt/hermes/.venv/bin/python runtime_approvals.py --config /opt/data/config.yaml --policy 150-approvals.json --apply
 ```
 
-工具只替换一个 Cron 值，不重写其他配置或打印秘密；拒绝非 smart 模式、缺字段、重复键及符号链接。写前创建同目录 `config.yaml.before-cron-*` 私有备份，原子替换并读回，保留权限/属主。检查退出0=一致、1=存在差异、2=拒绝。
+工具只修改审批策略，不重写其他配置或打印秘密；若原文件没有审批段（150当前由原生默认值合并得到 smart/deny），仅追加上述两个明确值。已有审批段时拒绝非 smart 模式、缺字段、重复键及符号链接。写前创建同目录 `config.yaml.before-cron-*` 私有备份，原子替换并读回，保留权限/属主。检查退出0=一致、1=存在差异、2=拒绝。
 
 `linux/compose.yml` 将宿主 `./data` 持久挂载为 `/opt/data`；现有升级器保留 data/runtime.env，不覆盖此配置，所以换镜像不应恢复为默认 deny。升级时保留完整实例 Compose overlay，并对本策略运行上述只读检查；发现漂移先报告，不自动重置整个配置。本次不修改升级器、不自动给其他实例开权限。
 

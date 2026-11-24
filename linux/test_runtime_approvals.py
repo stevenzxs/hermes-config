@@ -54,6 +54,15 @@ class RuntimeApprovalsTests(unittest.TestCase):
     def test_refuses_non_smart_mode(self):
         self.assert_refused(CONFIG.replace('mode: smart', 'mode: off'))
 
+    def test_materializes_absent_approvals_without_changing_other_bytes(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'config.yaml'
+            raw = b'model: unchanged\n# existing configuration\n'
+            p.write_bytes(raw)
+            r = self.run_tool(p, '--apply')
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(p.read_bytes(), raw + b'\napprovals:\n  mode: smart\n  cron_mode: approve\n')
+
     def test_refuses_duplicate_yaml_keys(self):
         self.assert_refused(CONFIG + 'approvals:\n  mode: smart\n  cron_mode: deny\n')
 
