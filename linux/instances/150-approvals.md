@@ -9,7 +9,7 @@
 
 ## 应用及升级后核验
 
-从已审阅、固定提交的配置库取得 `linux/runtime_approvals.py` 和本目录 JSON，使用运行 Hermes 的虚拟环境 Python（已有 PyYAML）。不要复制完整线上 `config.yaml` 到仓库。
+从已审阅、固定提交的配置库取得 `linux/runtime_approvals.py` 和本目录 JSON，使用运行 Hermes 的虚拟环境 Python（复用 `/opt/hermes/hermes_yaml.py` 原生解析器；本地测试可用 PyYAML），无需安装额外依赖。不要复制完整线上 `config.yaml` 到仓库。
 
 在150容器内、以持有 `/opt/data/config.yaml` 的 hermes 用户执行（工具路径以实际安全暂存目录为准）：
 

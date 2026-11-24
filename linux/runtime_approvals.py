@@ -8,26 +8,32 @@ import os
 from pathlib import Path
 import re
 import stat
+import sys
 import tempfile
 
-import yaml
+try:
+    # The deployed Hermes image owns its parser and duplicate-key policy.
+    sys.path.append('/opt/hermes')
+    from hermes_yaml import safe_load as load_yaml
+except ImportError:
+    import yaml
 
+    class UniqueLoader(yaml.SafeLoader):
+        """Reject ambiguous duplicate keys in local PyYAML validation too."""
 
-class UniqueLoader(yaml.SafeLoader):
-    """Reject ambiguous duplicate keys, including nested configuration."""
+    def unique_mapping(loader, node):
+        result = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node)
+            if key in result:
+                raise ValueError('duplicate YAML key')
+            result[key] = loader.construct_object(value_node)
+        return result
 
+    UniqueLoader.add_constructor('tag:yaml.org,2002:map', unique_mapping)
 
-def unique_mapping(loader, node):
-    result = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node)
-        if key in result:
-            raise ValueError('duplicate YAML key')
-        result[key] = loader.construct_object(value_node)
-    return result
-
-
-UniqueLoader.add_constructor('tag:yaml.org,2002:map', unique_mapping)
+    def load_yaml(raw):
+        return yaml.load(raw, Loader=UniqueLoader)
 
 
 def read_policy(path):
@@ -40,7 +46,7 @@ def read_policy(path):
 
 
 def candidate(raw, desired):
-    config = yaml.load(raw.decode('utf-8'), Loader=UniqueLoader)
+    config = load_yaml(raw.decode('utf-8'))
     approvals = config.get('approvals', {})
     if approvals.get('mode') != 'smart' or approvals.get('cron_mode') not in ('deny', 'approve'):
         raise ValueError('expected existing smart mode and explicit deny/approve cron mode')
@@ -56,8 +62,8 @@ def candidate(raw, desired):
     if count != 1:
         raise ValueError('expected one plain cron_mode field')
     output = raw[:block.start()] + updated + raw[block.end():]
-    parsed = yaml.load(output.decode('utf-8'), Loader=UniqueLoader)
-    expected = yaml.load(raw.decode('utf-8'), Loader=UniqueLoader)
+    parsed = load_yaml(output.decode('utf-8'))
+    expected = load_yaml(raw.decode('utf-8'))
     expected['approvals'].update(desired)
     if parsed != expected:
         raise ValueError('unexpected configuration difference')
