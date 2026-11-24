@@ -1,0 +1,9 @@
+{
+  "instance": "150.158.83.70",
+  "profile_home": "/opt/data",
+  "approved_on": "2026-11-24",
+  "approvals": {
+    "mode": "smart",
+    "cron_mode": "approve"
+  }
+}

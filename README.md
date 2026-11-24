@@ -10,6 +10,8 @@
 
 ## 当前脚本
 
+150 Linux 实例的持久 Cron 审批策略见 [linux/instances/150-approvals.md](linux/instances/150-approvals.md)：用户批准 `cron_mode: approve`，保留 `mode: smart`，仅适用于该实例 Profile；升级保留持久配置并只读检查漂移，不改产品默认或提交真实运行配置。
+
 `windows/` 保存现有安装目录中人工维护的启动脚本快照，不包含安装器、日志、密钥或数据库。
 脚本仍以 `D:\hermesagent` 为运行根目录，Android 辅助脚本中的地址也仍为当前机器地址。
 不要直接在源码目录里试运行这些脚本：它们会操作现有安装；`connect-android.cmd` 会重启运行网关。

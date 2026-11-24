@@ -25,6 +25,8 @@ Wait for /health HTTP 200. Check /v1/models without auth and with wrong token re
 
 ## Upgrade, failure and rollback
 
+150 instance only: preserve the approved persistent Cron policy in [instances/150-approvals.md](instances/150-approvals.md) and run its read-only drift check after upgrade. Keep `mode: smart`; `cron_mode: approve` affects all Cron jobs in that Profile, not only sudo. Do not reset the runtime config, change other instances or infer permission to execute deployment tasks from this policy.
+
 First-install is intentionally not an upgrade command: a second invocation must stop. Upgrades require separate approval, verified new digest and prior digest record. For offline upgrades, use `upgrade-offline.sh` from the verified bundle: it preserves data, runtime.env, and all compose overrides; only the image reference in `.env` is updated. A consistent backup of `.env` and compose files is created before mutation. Stop this project's service, take an access-restricted consistent backup of data/runtime.env/.env/compose.yml, then replace the digest and start. Never print resolved compose config containing secrets. Failed first install: docker compose stop from the target directory, retain all data/logs for diagnosis. Upgrade rollback: stop, restore the approved matching data/config backup and prior digest, start and repeat acceptance. No down -v, prune or broad deletion. A written procedure is not evidence of a rollback drill.
 
 ## Access and uninstall
